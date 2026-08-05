@@ -14,5 +14,8 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "BiliFullscreen"
-include ':app'
+    repositories {
+        google()
+        mavenCentral()
+        maven { url 'https://maven.aliyun.com/repository/jcenter' }
+    }
