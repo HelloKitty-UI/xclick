@@ -129,15 +129,22 @@ public class MainHook implements IXposedHookLoadPackage {
 
         DisplayMetrics dm = activity.getResources().getDisplayMetrics();
         List<View> targets = collectReplyCandidates(decor);
+        XposedBridge.log("BiliFullscreen: plugin candidates=" + targets.size());
         View target = pickClosest(targets, dm.widthPixels / 2, dm.heightPixels / 2);
         if (target == null) {
+            XposedBridge.log("BiliFullscreen: no target, pluginResId="
+                    + Integer.toHexString(getPluginWidgetResId(decor)));
+            dumpPluginStructure(decor);
             return;
         }
 
         lastTriggerTime = now;
-        if (triggerClick(target)) {
+        boolean clicked = triggerClick(target);
+        XposedBridge.log("BiliFullscreen: click result=" + clicked
+                + " targetClass=" + target.getClass().getName()
+                + " clickable=" + target.isClickable());
+        if (clicked) {
             param.setResult(true);
-            XposedBridge.log("BiliFullscreen: reply expand fired at " + target);
         }
     }
 
@@ -164,6 +171,40 @@ public class MainHook implements IXposedHookLoadPackage {
             targets = findReplyByText(root);
         }
         return targets;
+    }
+
+    private void dumpPluginStructure(View root) {
+        ArrayDeque<View> stack = new ArrayDeque<>();
+        stack.push(root);
+        int dumped = 0;
+        while (!stack.isEmpty() && dumped < 3) {
+            View v = stack.pop();
+            if (v instanceof ViewGroup && v.getId() == getPluginWidgetResId(v)) {
+                ViewGroup vg = (ViewGroup) v;
+                StringBuilder sb = new StringBuilder("plugin widget children=" + vg.getChildCount() + ":");
+                for (int i = 0; i < vg.getChildCount(); i++) {
+                    View c = vg.getChildAt(i);
+                    String text = "";
+                    if (c instanceof TextView && ((TextView) c).getText() != null) {
+                        text = ((TextView) c).getText().toString();
+                    }
+                    sb.append(" [").append(i).append("]").append(c.getClass().getSimpleName())
+                            .append(" clickable=").append(c.isClickable())
+                            .append(" text='").append(text).append("'");
+                }
+                XposedBridge.log("BiliFullscreen: " + sb);
+                dumped++;
+            }
+            if (v instanceof ViewGroup) {
+                ViewGroup vg = (ViewGroup) v;
+                for (int i = vg.getChildCount() - 1; i >= 0; i--) {
+                    stack.push(vg.getChildAt(i));
+                }
+            }
+        }
+        if (dumped == 0) {
+            XposedBridge.log("BiliFullscreen: no plugin_comment_widget found in tree");
+        }
     }
 
     private View findReplyChild(ViewGroup widget) {
