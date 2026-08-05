@@ -82,7 +82,7 @@ public class MainHook implements IXposedHookLoadPackage {
                         int keyCode = event.getKeyCode();
                         if (keyCode == KeyEvent.KEYCODE_VOLUME_DOWN) {
                             maybeEnterFullscreen(activity, param, now);
-                        } else if (keyCode == KeyEvent.KEYCODE_SLEEP) {
+                        } else if (keyCode == KeyEvent.KEYCODE_VOLUME_UP) {
                             expandNearestReply(activity, param, now);
                         }
                     }
