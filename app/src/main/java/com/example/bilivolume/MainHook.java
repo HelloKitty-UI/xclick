@@ -47,7 +47,8 @@ public class MainHook implements IXposedHookLoadPackage {
                         }
                     });
         } catch (Throwable t) {
-            XposedBridge.log("BiliFullscreen: failed to hook widget", t);
+            XposedBridge.log("BiliFullscreen: failed to hook widget");
+            XposedBridge.log(t);
         }
 
         XposedHelpers.findAndHookMethod(Activity.class, "dispatchKeyEvent", KeyEvent.class,
@@ -88,7 +89,8 @@ public class MainHook implements IXposedHookLoadPackage {
                             param.setResult(true);
                             XposedBridge.log("BiliFullscreen: widget.onClick fired");
                         } catch (Throwable t) {
-                            XposedBridge.log("BiliFullscreen: onClick failed", t);
+                            XposedBridge.log("BiliFullscreen: onClick failed");
+                            XposedBridge.log(t);
                         }
                     }
                 });
