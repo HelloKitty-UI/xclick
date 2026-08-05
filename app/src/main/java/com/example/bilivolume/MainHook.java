@@ -13,6 +13,7 @@ import android.widget.TextView;
 import java.util.ArrayList;
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.regex.Pattern;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
@@ -27,7 +28,7 @@ public class MainHook implements IXposedHookLoadPackage {
             "com.bilibili.app.gemini.player.widget.story.GeminiPlayerFullscreenWidget";
     private static final String PLUGIN_COMMENT_WIDGET_ID = "plugin_comment_widget";
     private static final String REPLY_TEXT_REGEX = "共[\\d,，.万wW]+条回复";
-    private static final int REPLY_CHILD_INDEX = 3;
+    private static final Pattern REPLY_TEXT_PATTERN = Pattern.compile(REPLY_TEXT_REGEX);
 
     private Object widgetRef;
     private int pluginWidgetResId;
@@ -209,17 +210,21 @@ public class MainHook implements IXposedHookLoadPackage {
 
     private View findReplyChild(ViewGroup widget) {
         int count = widget.getChildCount();
+        View lastMatch = null;
         for (int i = 0; i < count; i++) {
             View child = widget.getChildAt(i);
             if (child instanceof TextView) {
                 CharSequence cs = ((TextView) child).getText();
-                if (cs != null && cs.toString().trim().matches(REPLY_TEXT_REGEX)) {
-                    return child;
+                if (cs != null && REPLY_TEXT_PATTERN.matcher(cs.toString()).find()) {
+                    lastMatch = child;
                 }
             }
         }
-        if (count > REPLY_CHILD_INDEX) {
-            View child = widget.getChildAt(REPLY_CHILD_INDEX);
+        if (lastMatch != null) {
+            return lastMatch;
+        }
+        if (count > 0) {
+            View child = widget.getChildAt(count - 1);
             if (child.isShown()) {
                 return child;
             }
@@ -236,7 +241,7 @@ public class MainHook implements IXposedHookLoadPackage {
             if (v instanceof TextView) {
                 TextView tv = (TextView) v;
                 if (tv.isShown() && tv.getText() != null
-                        && tv.getText().toString().trim().matches(REPLY_TEXT_REGEX)) {
+                        && REPLY_TEXT_PATTERN.matcher(tv.getText().toString()).find()) {
                     targets.add(v);
                 }
             }
