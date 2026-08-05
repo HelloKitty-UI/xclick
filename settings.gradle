@@ -11,11 +11,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url 'https://maven.aliyun.com/repository/jcenter' }
     }
 }
 
-    repositories {
-        google()
-        mavenCentral()
-        maven { url 'https://maven.aliyun.com/repository/jcenter' }
-    }
+rootProject.name = "BiliFullscreen"
+include ':app'
