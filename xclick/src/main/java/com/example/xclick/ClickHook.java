@@ -185,6 +185,7 @@ public class ClickHook implements IXposedHookLoadPackage {
         XposedBridge.log("[XClick] [" + p.name + "] 选定候选" + candidates.indexOf(pick)
                 + " clickable=" + pick.isClickable() + " onClickListener=" + hasClickListener(pick)
                 + " 点击结果=" + ok);
+        final ViewGroup froot = decor instanceof ViewGroup ? (ViewGroup) decor : null;
         try {
             new Thread(new Runnable() {
                 @Override
@@ -193,8 +194,22 @@ public class ClickHook implements IXposedHookLoadPackage {
                         Thread.sleep(1500);
                     } catch (InterruptedException e) {
                     }
+                    String after = textOf(clicked);
                     XposedBridge.log("[XClick] [" + p.name + "] 点击前文本=" + beforeText
-                            + " 点击后文本=" + textOf(clicked));
+                            + " 点击后文本=" + after);
+                    if (after.equals(beforeText) && clicked.isShown() && froot != null) {
+                        try {
+                            final View cv = clicked;
+                            froot.post(new Runnable() {
+                                @Override
+                                public void run() {
+                                    boolean ok2 = dispatchTouch(froot, cv);
+                                    XposedBridge.log("[XClick] [" + p.name + "] 未展开,兜底点击视图中心=" + ok2);
+                                }
+                            });
+                        } catch (Throwable t2) {
+                        }
+                    }
                 }
             }).start();
         } catch (Throwable t) {
@@ -293,8 +308,30 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private View pick(List<View> candidates, Activity activity) {
         List<View> shown = new ArrayList<View>();
+        int sw = 0;
+        int sh = 0;
+        try {
+            DisplayMetrics dm = activity.getResources().getDisplayMetrics();
+            sw = dm.widthPixels;
+            sh = dm.heightPixels;
+        } catch (Throwable t) {
+        }
         for (View v : candidates) {
-            if (v.isShown()) shown.add(v);
+            if (!v.isShown()) continue;
+            if (sw > 0 && sh > 0) {
+                int[] pos = new int[2];
+                try {
+                    v.getLocationOnScreen(pos);
+                } catch (Throwable t) {
+                    continue;
+                }
+                if (pos[0] >= 0 && pos[1] >= 0
+                        && pos[0] + v.getWidth() <= sw && pos[1] + v.getHeight() <= sh) {
+                    shown.add(v);
+                }
+            } else {
+                shown.add(v);
+            }
         }
         List<View> pool = shown.isEmpty() ? candidates : shown;
         if (pool.size() == 1) return pool.get(0);
@@ -330,7 +367,15 @@ public class ClickHook implements IXposedHookLoadPackage {
         int[] xy = new int[2];
         if (v.isShown() && root != null && tapTextPoint(v, p, xy)) {
             if (dispatchTouchAt(root, xy[0], xy[1])) {
-                XposedBridge.log("[XClick] 点击方式: 精准坐标触摸(" + xy[0] + "," + xy[1] + ")");
+                int[] vr = new int[2];
+                String vrstr = "";
+                try {
+                    v.getLocationOnScreen(vr);
+                    vrstr = " 视图(" + vr[0] + "," + vr[1] + "," + (vr[0] + v.getWidth())
+                            + "," + (vr[1] + v.getHeight()) + ")";
+                } catch (Throwable t) {
+                }
+                XposedBridge.log("[XClick] 点击方式: 精准坐标触摸(" + xy[0] + "," + xy[1] + ")" + vrstr);
                 return true;
             }
         }
@@ -425,8 +470,16 @@ public class ClickHook implements IXposedHookLoadPackage {
             float y = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f;
             int[] loc = new int[2];
             v.getLocationOnScreen(loc);
-            outXY[0] = Math.round(loc[0] + tv.getPaddingLeft() + x);
-            outXY[1] = Math.round(loc[1] + tv.getPaddingTop() + y);
+            outXY[0] = Math.round(loc[0] + tv.getCompoundPaddingLeft() + x);
+            outXY[1] = Math.round(loc[1] + tv.getCompoundPaddingTop() + y);
+            try {
+                android.util.DisplayMetrics dm = tv.getResources().getDisplayMetrics();
+                if (outXY[0] < 0 || outXY[1] < 0
+                        || outXY[0] > dm.widthPixels || outXY[1] > dm.heightPixels) {
+                    return false;
+                }
+            } catch (Throwable t2) {
+            }
             return true;
         } catch (Throwable t) {
             return false;
