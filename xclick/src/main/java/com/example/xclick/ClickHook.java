@@ -25,6 +25,8 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private static final String CONFIG_PREFS = "xclick_config";
     private static final String CONFIG_KEY = "config";
+    private static final java.util.regex.Pattern REPLY_TEXT =
+            java.util.regex.Pattern.compile("共[0-9][0-9,，.万wW]*条回复");
 
     private long lastTrigger = 0;
     private XConfig cfg;
@@ -36,8 +38,7 @@ public class ClickHook implements IXposedHookLoadPackage {
         if (path == null) return null;
         String text = XConfig.readFile(new File(path));
         if (text == null || text.trim().isEmpty()) return null;
-        XConfig c = XConfig.parse(text);
-        return c;
+        return XConfig.parse(text);
     }
 
     private static XConfig tryFromPrefs() {
@@ -87,8 +88,11 @@ public class ClickHook implements IXposedHookLoadPackage {
         if (!anyMatch) return;
         if (!cfgLoadedOnce) {
             cfgLoadedOnce = true;
+            XposedBridge.log("[XClick] 当前应用=" + lpparam.packageName + " 只打印匹配本应用的配置:");
             for (XConfig.Profile p : cfg.profiles) {
-                XposedBridge.log("[XClick] 配置: [" + p.name + "] " + p.keyName + " -> view=" + p.viewId);
+                if (!p.matchesPackage(lpparam.packageName)) continue;
+                XposedBridge.log("[XClick] 配置: [" + p.name + "] key=" + p.keyName
+                        + " view=" + p.viewId + " child=" + p.childText);
             }
         }
 
@@ -112,13 +116,12 @@ public class ClickHook implements IXposedHookLoadPackage {
                                 }
                             }
                             if (!keyWanted) return;
-                            XConfig fresh = null;
                             try {
-                                fresh = loadConfig();
+                                XConfig fresh = loadConfig();
+                                if (fresh != null && !fresh.profiles.isEmpty()) {
+                                    cfg = fresh;
+                                }
                             } catch (Throwable t) {
-                            }
-                            if (fresh != null && !fresh.profiles.isEmpty()) {
-                                cfg = fresh;
                             }
                             long now = System.currentTimeMillis();
                             if (now - lastTrigger < cfg.debounceMs) return;
@@ -159,11 +162,21 @@ public class ClickHook implements IXposedHookLoadPackage {
                     + " child=" + p.childText);
             return false;
         }
+        for (int i = 0; i < candidates.size() && i < 5; i++) {
+            View c = candidates.get(i);
+            String txt = "";
+            if (c instanceof TextView) {
+                CharSequence cs = ((TextView) c).getText();
+                txt = cs == null ? "" : cs.toString();
+            }
+            if (txt.length() > 30) txt = txt.substring(0, 30);
+            XposedBridge.log("[XClick] [" + p.name + "] 候选" + i + " "
+                    + c.getClass().getName() + " shown=" + c.isShown() + " text=" + txt);
+        }
         View pick = pick(candidates, activity);
-        boolean ok = triggerClick(pick);
-        XposedBridge.log("[XClick] [" + p.name + "] 候选=" + candidates.size()
-                + " 目标=" + pick.getClass().getName() + " 可见=" + pick.isShown()
-                + " 点击结果=" + ok);
+        boolean ok = triggerClick(pick, p);
+        XposedBridge.log("[XClick] [" + p.name + "] 选定候选" + candidates.indexOf(pick)
+                + " 可见=" + pick.isShown() + " 点击结果=" + ok);
         return ok;
     }
 
@@ -270,30 +283,19 @@ public class ClickHook implements IXposedHookLoadPackage {
         return best != null ? best : pool.get(0);
     }
 
-    private boolean triggerClick(View v) {
+    private boolean triggerClick(View v, XConfig.Profile p) {
+        if (v instanceof TextView && p.childRegex != null) {
+            CharSequence cs = ((TextView) v).getText();
+            if (cs != null && p.childRegex.matcher(cs.toString()).find()) {
+                if (clickSpan(v)) return true;
+            }
+        }
         try {
             v.performClick();
             return true;
         } catch (Throwable t) {
         }
-        try {
-            if (v instanceof TextView) {
-                CharSequence cs = ((TextView) v).getText();
-                if (cs instanceof android.text.Spanned) {
-                    android.text.Spanned sp = (android.text.Spanned) cs;
-                    int end = sp.length();
-                    if (end > 0) {
-                        android.text.style.ClickableSpan[] spans =
-                                sp.getSpans(0, end, android.text.style.ClickableSpan.class);
-                        if (spans != null && spans.length > 0) {
-                            spans[0].onClick(v);
-                            return true;
-                        }
-                    }
-                }
-            }
-        } catch (Throwable t) {
-        }
+        if (clickSpan(v)) return true;
         try {
             v.callOnClick();
             return true;
@@ -312,6 +314,27 @@ public class ClickHook implements IXposedHookLoadPackage {
             } else {
                 break;
             }
+        }
+        return false;
+    }
+
+    private boolean clickSpan(View v) {
+        try {
+            if (!(v instanceof TextView)) return false;
+            CharSequence cs = ((TextView) v).getText();
+            if (cs instanceof android.text.Spanned) {
+                android.text.Spanned sp = (android.text.Spanned) cs;
+                int end = sp.length();
+                if (end > 0) {
+                    android.text.style.ClickableSpan[] spans =
+                            sp.getSpans(0, end, android.text.style.ClickableSpan.class);
+                    if (spans != null && spans.length > 0) {
+                        spans[0].onClick(v);
+                        return true;
+                    }
+                }
+            }
+        } catch (Throwable t) {
         }
         return false;
     }
