@@ -123,14 +123,15 @@ public class ClickHook implements IXposedHookLoadPackage {
                             if (event == null) return;
                             if (event.getAction() != KeyEvent.ACTION_DOWN) return;
                             lastUserKey = System.currentTimeMillis();
-                            boolean keyWanted = false;
+                            boolean pkgWanted = false;
                             for (XConfig.Profile p : cfg.profiles) {
-                                if (p.matchesKey(event.getKeyCode())) {
-                                    keyWanted = true;
+                                if (p.matchesPackage(lpparam.packageName)
+                                        && p.matchesKey(event.getKeyCode())) {
+                                    pkgWanted = true;
                                     break;
                                 }
                             }
-                            if (!keyWanted) return;
+                            if (!pkgWanted) return;
                             try {
                                 XConfig fresh = loadConfig();
                                 if (fresh != null && !fresh.profiles.isEmpty()) {
@@ -154,14 +155,15 @@ public class ClickHook implements IXposedHookLoadPackage {
                                 }
                             }
                             long nowMs = System.currentTimeMillis();
-                            if (handled) {
-                                lastLocalClick = nowMs;
-                                if (cfg.consumeKey) {
-                                    param.setResult(true);
-                                }
-                            } else {
+                            lastLocalClick = nowMs;
+                            if (cfg.consumeKey) {
+                                param.setResult(true);
+                            }
+                            if (!handled) {
                                 lastTrigger = 0;
                             }
+                            XposedBridge.log("[XClick] 按键" + event.getKeyCode() + " 本包=" + lpparam.packageName
+                                    + " 处理=" + handled + " 消费=" + cfg.consumeKey);
                             writeKeyTrigger(event.getKeyCode());
                         } catch (Throwable t) {
                             XposedBridge.log("[XClick] hook 异常 " + t);
