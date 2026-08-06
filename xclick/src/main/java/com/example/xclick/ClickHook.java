@@ -330,7 +330,7 @@ public class ClickHook implements IXposedHookLoadPackage {
         int[] xy = new int[2];
         if (v.isShown() && root != null && tapTextPoint(v, p, xy)) {
             if (dispatchTouchAt(root, xy[0], xy[1])) {
-                XposedBridge.log("[XClick] 点击方式: 精准坐标触摸(命中文字)");
+                XposedBridge.log("[XClick] 点击方式: 精准坐标触摸(" + xy[0] + "," + xy[1] + ")");
                 return true;
             }
         }
@@ -386,7 +386,8 @@ public class ClickHook implements IXposedHookLoadPackage {
             if (cs == null) return false;
             String text = cs.toString();
             if (text.length() == 0) return false;
-            int offset = -1;
+            int start = -1;
+            int end = -1;
             if (cs instanceof android.text.Spanned) {
                 android.text.Spanned sp = (android.text.Spanned) cs;
                 android.text.style.ClickableSpan[] spans =
@@ -398,22 +399,29 @@ public class ClickHook implements IXposedHookLoadPackage {
                         String sub = text.substring(Math.max(0, s), Math.min(e, text.length()));
                         if (p.childRegex != null
                                 && sub.matches(".*" + p.childRegex.pattern() + ".*")) {
-                            offset = s;
+                            start = s;
+                            end = e;
                             break;
                         }
-                        if (offset < 0) offset = s;
+                        if (start < 0) {
+                            start = s;
+                            end = e;
+                        }
                     }
                 }
             }
-            if (offset < 0 && p.childRegex != null) {
+            if (start < 0 && p.childRegex != null) {
                 java.util.regex.Matcher m = p.childRegex.matcher(text);
-                if (m.find()) offset = m.start();
+                if (m.find()) {
+                    start = m.start();
+                    end = m.end();
+                }
             }
-            if (offset < 0 || offset >= text.length()) return false;
+            if (start < 0 || end <= start) return false;
             android.text.Layout layout = tv.getLayout();
             if (layout == null) return false;
-            int line = layout.getLineForOffset(offset);
-            float x = layout.getPrimaryHorizontal(offset) + 2;
+            int line = layout.getLineForOffset(start);
+            float x = (layout.getPrimaryHorizontal(start) + layout.getPrimaryHorizontal(end)) / 2f;
             float y = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f;
             int[] loc = new int[2];
             v.getLocationOnScreen(loc);
@@ -484,6 +492,10 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private boolean dispatchTouchAt(ViewGroup root, float x, float y) {
         try {
+            int[] decLoc = new int[2];
+            root.getLocationOnScreen(decLoc);
+            x -= decLoc[0];
+            y -= decLoc[1];
             long t = SystemClock.uptimeMillis();
             MotionEvent down = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0);
             down.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
