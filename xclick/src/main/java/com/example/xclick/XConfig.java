@@ -116,7 +116,13 @@ public class XConfig {
 
     public static int parseKey(String name) {
         if (name == null || name.trim().isEmpty()) return KeyEvent.KEYCODE_VOLUME_UP;
-        String n = name.trim().toUpperCase();
+        String n = name.trim();
+        try {
+            int v = Integer.parseInt(n);
+            if (v >= 0 && v <= 999) return v;
+        } catch (NumberFormatException e) {
+        }
+        n = n.toUpperCase();
         if (n.startsWith("KEYCODE_")) n = n.substring(8);
         if (n.equals("VOLUME_UP")) return KeyEvent.KEYCODE_VOLUME_UP;
         if (n.equals("VOLUME_DOWN")) return KeyEvent.KEYCODE_VOLUME_DOWN;

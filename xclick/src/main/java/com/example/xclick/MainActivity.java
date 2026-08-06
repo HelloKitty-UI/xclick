@@ -226,7 +226,7 @@ public class MainActivity extends Activity {
         editContainer.addView(ePkg);
 
         eKey = new EditText(this);
-        eKey.setHint("触发按键（VOLUME_DOWN / VOLUME_UP / DPAD_UP ...）");
+        eKey.setHint("触发按键：数字键码或名字（如 25 / 24 / VOLUME_DOWN / VOLUME_UP）");
         eKey.setText(p != null ? p.keyName : "VOLUME_DOWN");
         eKey.setSingleLine(true);
         editContainer.addView(eKey);
