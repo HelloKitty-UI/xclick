@@ -27,7 +27,16 @@ jobs:
           gradle-version: 8.5
 
       - name: Build APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --console=plain
+
+      - name: List APK outputs
+        run: |
+          echo '--- settings.gradle ---'
+          cat settings.gradle
+          echo '--- all APKs ---'
+          find . -name '*.apk' -not -path '*/dist/*' | sort
+          echo '--- xclick build dir ---'
+          ls -R xclick/build/outputs 2>&1 || echo 'xclick/build/outputs 不存在!'
 
       - name: Collect APKs
         run: |
