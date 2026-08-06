@@ -185,14 +185,17 @@ public class ClickHook implements IXposedHookLoadPackage {
                 + " clickable=" + pick.isClickable() + " onClickListener=" + hasClickListener(pick)
                 + " 点击结果=" + ok);
         try {
-            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+            new Thread(new Runnable() {
                 @Override
                 public void run() {
-                    String after = textOf(clicked);
+                    try {
+                        Thread.sleep(1500);
+                    } catch (InterruptedException e) {
+                    }
                     XposedBridge.log("[XClick] [" + p.name + "] 点击前文本=" + beforeText
-                            + " 点击后文本=" + after);
+                            + " 点击后文本=" + textOf(clicked));
                 }
-            }, 1500);
+            }).start();
         } catch (Throwable t) {
         }
         return ok;
@@ -323,30 +326,33 @@ public class ClickHook implements IXposedHookLoadPackage {
     }
 
     private boolean triggerClick(View v, XConfig.Profile p) {
-        if (v instanceof TextView && p.childRegex != null) {
-            CharSequence cs = ((TextView) v).getText();
-            if (cs != null && p.childRegex.matcher(cs.toString()).find()) {
-                if (clickSpan(v)) return true;
-            }
+        if (clickSpan(v, p)) {
+            XposedBridge.log("[XClick] 点击方式: span");
+            return true;
         }
         try {
             v.performClick();
+            XposedBridge.log("[XClick] 点击方式: performClick");
             return true;
         } catch (Throwable t) {
         }
-        if (clickSpan(v)) return true;
         try {
             v.callOnClick();
+            XposedBridge.log("[XClick] 点击方式: callOnClick");
             return true;
         } catch (Throwable t) {
         }
-        if (simulateTouch(v)) return true;
+        if (simulateTouch(v)) {
+            XposedBridge.log("[XClick] 点击方式: 模拟触摸");
+            return true;
+        }
         View cur = v;
         for (int depth = 0; cur != null && depth < 2; depth++) {
             if (cur.getParent() instanceof View) {
                 View parent = (View) cur.getParent();
                 try {
                     parent.performClick();
+                    XposedBridge.log("[XClick] 点击方式: 父级performClick");
                     return true;
                 } catch (Throwable t) {
                 }
@@ -354,6 +360,53 @@ public class ClickHook implements IXposedHookLoadPackage {
             } else {
                 break;
             }
+        }
+        return false;
+    }
+
+    private boolean clickSpan(View v, XConfig.Profile p) {
+        try {
+            if (!(v instanceof TextView)) return false;
+            TextView tv = (TextView) v;
+            CharSequence cs = tv.getText();
+            if (!(cs instanceof android.text.Spanned)) return false;
+            android.text.Spanned sp = (android.text.Spanned) cs;
+            int end = sp.length();
+            if (end <= 0) return false;
+            android.text.style.ClickableSpan[] spans =
+                    sp.getSpans(0, end, android.text.style.ClickableSpan.class);
+            if (spans == null || spans.length == 0) return false;
+            String text = cs.toString();
+            int matchStart = -1;
+            if (p.childRegex != null) {
+                java.util.regex.Matcher m = p.childRegex.matcher(text);
+                if (m.find()) matchStart = m.start();
+            }
+            android.text.style.ClickableSpan target = null;
+            if (matchStart >= 0) {
+                for (android.text.style.ClickableSpan span : spans) {
+                    int s = sp.getSpanStart(span);
+                    int e = sp.getSpanEnd(span);
+                    if (s <= matchStart && matchStart < e) {
+                        target = span;
+                        break;
+                    }
+                }
+            }
+            if (target == null) {
+                int best = -1;
+                for (int i = 0; i < spans.length; i++) {
+                    if (sp.getSpanStart(spans[i]) >= best) {
+                        best = sp.getSpanStart(spans[i]);
+                        target = spans[i];
+                    }
+                }
+            }
+            if (target != null) {
+                target.onClick(v);
+                return true;
+            }
+        } catch (Throwable t) {
         }
         return false;
     }
@@ -375,26 +428,5 @@ public class ClickHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             return false;
         }
-    }
-
-    private boolean clickSpan(View v) {
-        try {
-            if (!(v instanceof TextView)) return false;
-            CharSequence cs = ((TextView) v).getText();
-            if (cs instanceof android.text.Spanned) {
-                android.text.Spanned sp = (android.text.Spanned) cs;
-                int end = sp.length();
-                if (end > 0) {
-                    android.text.style.ClickableSpan[] spans =
-                            sp.getSpans(0, end, android.text.style.ClickableSpan.class);
-                    if (spans != null && spans.length > 0) {
-                        spans[0].onClick(v);
-                        return true;
-                    }
-                }
-            }
-        } catch (Throwable t) {
-        }
-        return false;
     }
 }
