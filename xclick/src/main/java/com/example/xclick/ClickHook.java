@@ -33,10 +33,16 @@ public class ClickHook implements IXposedHookLoadPackage {
             java.util.regex.Pattern.compile("共[0-9][0-9,，.万wW]*条回复");
 
     private long lastTrigger = 0;
+    private long lastKeyWrite = 0;
+    private long lastLocalClick = 0;
+    private volatile boolean watcherStarted = false;
+    private String pkg;
+    private XC_LoadPackage.LoadPackageParam lp;
     private XConfig cfg;
     private boolean cfgLoadedOnce = false;
     private final Map<String, Integer> resIdCache = new HashMap<String, Integer>();
     private WeakReference<Activity> currentActivity = new WeakReference<Activity>(null);
+    private String triggerPath = null;
 
     private static XConfig tryFromFile(String path) {
         if (path == null) return null;
@@ -142,18 +148,161 @@ public class ClickHook implements IXposedHookLoadPackage {
                                     XposedBridge.log("[XClick] 触发异常 " + t);
                                 }
                             }
+                            long nowMs = System.currentTimeMillis();
                             if (handled) {
+                                lastLocalClick = nowMs;
                                 if (cfg.consumeKey) {
                                     param.setResult(true);
                                 }
                             } else {
                                 lastTrigger = 0;
                             }
+                            writeKeyTrigger(event.getKeyCode());
                         } catch (Throwable t) {
                             XposedBridge.log("[XClick] hook 异常 " + t);
                         }
                     }
                 });
+        try {
+            XposedHelpers.findAndHookMethod(Activity.class, "onResume", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
+                    try {
+                        if (param.thisObject instanceof Activity) {
+                            currentActivity = new WeakReference<Activity>((Activity) param.thisObject);
+                        }
+                    } catch (Throwable t) {
+                    }
+                }
+            });
+        } catch (Throwable t) {
+        }
+        try {
+            Class<?> cb = Class.forName("android.media.session.MediaSession$Callback");
+            XposedHelpers.findAndHookMethod(cb, "onMediaButtonEvent",
+                    android.content.Intent.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                android.content.Intent it = (android.content.Intent) param.args[0];
+                                KeyEvent ke = (KeyEvent) it.getParcelableExtra(
+                                        android.content.Intent.EXTRA_KEY_EVENT);
+                                if (ke != null && ke.getAction() == KeyEvent.ACTION_DOWN) {
+                                    writeKeyTrigger(ke.getKeyCode());
+                                }
+                            } catch (Throwable t2) {
+                            }
+                        }
+                    });
+        } catch (Throwable t) {
+        }
+        pkg = lpparam.packageName;
+        try {
+            triggerPath = lpparam.appInfo.dataDir + "/files/xclick_trigger.txt";
+        } catch (Throwable t) {
+        }
+        lp = lpparam;
+        startWatcher();
+    }
+
+    private void writeKeyTrigger(int keyCode) {
+        try {
+            if (triggerPath == null || pkg == null || cfg == null) return;
+            if (!anyKeyMatches(keyCode)) return;
+            long now = System.currentTimeMillis();
+            if (now - lastKeyWrite < cfg.debounceMs) return;
+            lastKeyWrite = now;
+            String tmp = triggerPath + ".tmp";
+            File tf = new File(tmp);
+            File dir = tf.getParentFile();
+            if (dir != null && !dir.exists()) dir.mkdirs();
+            java.io.FileOutputStream fos = new java.io.FileOutputStream(tf);
+            fos.write((keyCode + "\n" + now + "\n").getBytes("UTF-8"));
+            fos.close();
+            tf.renameTo(new File(triggerPath));
+        } catch (Throwable t) {
+        }
+    }
+
+    private boolean anyKeyMatches(int keyCode) {
+        try {
+            for (XConfig.Profile p : cfg.profiles) {
+                if (p.matchesPackage(pkg) && p.matchesKey(keyCode)) return true;
+            }
+        } catch (Throwable t) {
+        }
+        return false;
+    }
+
+    private void startWatcher() {
+        if (watcherStarted) return;
+        watcherStarted = true;
+        new Thread(new Runnable() {
+            @Override
+            public void run() {
+                while (true) {
+                    try {
+                        Thread.sleep(120);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                    try {
+                        if (triggerPath == null) {
+                            Thread.sleep(1000);
+                            continue;
+                        }
+                        File f = new File(triggerPath);
+                        if (!f.exists()) continue;
+                        int keyCode = 0;
+                        long t = 0;
+                        try {
+                            java.io.BufferedReader r = new java.io.BufferedReader(
+                                    new java.io.InputStreamReader(
+                                            new java.io.FileInputStream(f), "UTF-8"));
+                            String l1 = r.readLine();
+                            String l2 = r.readLine();
+                            r.close();
+                            if (l1 != null) keyCode = Integer.parseInt(l1.trim());
+                            if (l2 != null) t = Long.parseLong(l2.trim());
+                        } catch (Throwable t2) {
+                        }
+                        if (keyCode <= 0 || t <= 0) {
+                            f.delete();
+                            continue;
+                        }
+                        File lock = new File(triggerPath + ".lk");
+                        if (!f.renameTo(lock)) continue;
+                        long now = System.currentTimeMillis();
+                        if (now - lastLocalClick < cfg.debounceMs) {
+                            lock.delete();
+                            continue;
+                        }
+                        if (Math.abs(now - t) > 60000) {
+                            lock.delete();
+                            continue;
+                        }
+                        if (!anyKeyMatches(keyCode)) {
+                            lock.delete();
+                            continue;
+                        }
+                        lastLocalClick = now;
+                        Activity act = currentActivity.get();
+                        if (act != null) {
+                            for (XConfig.Profile p : cfg.profiles) {
+                                if (!p.matchesPackage(pkg) || !p.matchesKey(keyCode)) continue;
+                                try {
+                                    trigger(p, act, lp);
+                                } catch (Throwable t2) {
+                                    XposedBridge.log("[XClick] 触发异常 " + t2);
+                                }
+                            }
+                        }
+                        lock.delete();
+                    } catch (Throwable t) {
+                    }
+                }
+            }
+        }).start();
     }
 
     private boolean trigger(final XConfig.Profile p, Activity activity, XC_LoadPackage.LoadPackageParam lpparam) {
