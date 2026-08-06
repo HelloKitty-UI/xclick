@@ -177,7 +177,11 @@ public class ClickHook implements IXposedHookLoadPackage {
             XposedBridge.log("[XClick] [" + p.name + "] 候选" + i + " "
                     + c.getClass().getName() + " shown=" + c.isShown() + " text=" + txt);
         }
-        View pick = pick(candidates, activity);
+        View pick = pick(candidates, activity, p.childRegex != null);
+        if (pick == null) {
+            XposedBridge.log("[XClick] [" + p.name + "] 无可视候选(候选均在屏幕可视区外),不点击");
+            return false;
+        }
         View decor = activity.getWindow().getDecorView();
         final View clicked = pick;
         final String beforeText = textOf(pick);
@@ -316,7 +320,7 @@ public class ClickHook implements IXposedHookLoadPackage {
         return rid;
     }
 
-    private View pick(List<View> candidates, Activity activity) {
+    private View pick(List<View> candidates, Activity activity, boolean requireVisible) {
         List<View> shown = new ArrayList<View>();
         int sw = 0;
         int sh = 0;
@@ -343,6 +347,7 @@ public class ClickHook implements IXposedHookLoadPackage {
                 shown.add(v);
             }
         }
+        if (requireVisible && shown.isEmpty()) return null;
         List<View> pool = shown.isEmpty() ? candidates : shown;
         if (pool.size() == 1) return pool.get(0);
         int cx = 0;
