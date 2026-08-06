@@ -36,6 +36,7 @@ public class ClickHook implements IXposedHookLoadPackage {
     private long lastKeyWrite = 0;
     private long lastLocalClick = 0;
     private volatile boolean watcherStarted = false;
+    private volatile boolean activityStopped = false;
     private String pkg;
     private XC_LoadPackage.LoadPackageParam lp;
     private XConfig cfg;
@@ -178,6 +179,15 @@ public class ClickHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
         }
         try {
+            XposedHelpers.findAndHookMethod(Activity.class, "onStop", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    activityStopped = true;
+                }
+            });
+        } catch (Throwable t) {
+        }
+        try {
             Class<?> cb = Class.forName("android.media.session.MediaSession$Callback");
             XposedHelpers.findAndHookMethod(cb, "onMediaButtonEvent",
                     android.content.Intent.class, new XC_MethodHook() {
@@ -307,6 +317,8 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private boolean trigger(final XConfig.Profile p, Activity activity, XC_LoadPackage.LoadPackageParam lpparam) {
         if (activity == null) return false;
+        activityStopped = false;
+        final Activity clickAct = activity;
         View root = activity.getWindow().getDecorView();
         if (root == null) return false;
         List<View> candidates = collectCandidates(p, root, lpparam);
@@ -350,7 +362,8 @@ public class ClickHook implements IXposedHookLoadPackage {
                     String after = textOf(clicked);
                     XposedBridge.log("[XClick] [" + p.name + "] 点击前文本=" + beforeText
                             + " 点击后文本=" + after);
-                    if (after.equals(beforeText) && clicked.isShown() && froot != null) {
+                    if (after.equals(beforeText) && clicked.isShown() && froot != null
+                            && !activityStopped && currentActivity.get() == clickAct) {
                         try {
                             final View cv = clicked;
                             froot.post(new Runnable() {
