@@ -164,4 +164,149 @@ public class ClickHook implements IXposedHookLoadPackage {
                 if (rid != 0 && v.getId() == rid) {
                     if (cfg.childRegex != null && v instanceof ViewGroup) {
                         View child = findChildByText((ViewGroup) v, cfg.childRegex);
-         
+                        if (child != null) out.add(child);
+                    } else {
+                        out.add(v);
+                    }
+                }
+            } else if (cfg.textRegex != null && v instanceof TextView) {
+                CharSequence cs = ((TextView) v).getText();
+                if (cs != null && cfg.textRegex.matcher(cs.toString()).find()) {
+                    out.add(v);
+                }
+            }
+            if (v instanceof ViewGroup) {
+                ViewGroup g = (ViewGroup) v;
+                for (int i = g.getChildCount() - 1; i >= 0; i--) {
+                    stack.push(g.getChildAt(i));
+                }
+            }
+        }
+        return out;
+    }
+
+    private View findChildByText(ViewGroup g, java.util.regex.Pattern p) {
+        View found = null;
+        int last = -1;
+        for (int i = 0; i < g.getChildCount(); i++) {
+            View c = g.getChildAt(i);
+            if (c instanceof TextView) {
+                CharSequence cs = ((TextView) c).getText();
+                if (cs != null && p.matcher(cs.toString()).find()) {
+                    if (found == null || i > last) {
+                        found = c;
+                        last = i;
+                    }
+                }
+            }
+        }
+        if (found != null) return found;
+        if (g.getChildCount() > 0) return g.getChildAt(g.getChildCount() - 1);
+        return null;
+    }
+
+    private int resolveId(View v, XC_LoadPackage.LoadPackageParam lpparam) {
+        for (String name : cfg.viewIds) {
+            Integer cached = resIdCache.get(name);
+            if (cached != null) return cached;
+        }
+        int rid = 0;
+        for (String name : cfg.viewIds) {
+            try {
+                int id = v.getResources().getIdentifier(name, "id", lpparam.packageName);
+                resIdCache.put(name, id);
+                if (id != 0) rid = id;
+            } catch (Throwable t) {
+            }
+        }
+        return rid;
+    }
+
+    private View pick(List<View> targets, Activity activity) {
+        if (targets.size() == 1) return targets.get(0);
+        if (cfg.pickMode.equals("first")) return targets.get(0);
+        int cx = 0;
+        int cy = 0;
+        try {
+            DisplayMetrics dm = activity.getResources().getDisplayMetrics();
+            cx = dm.widthPixels / 2;
+            cy = dm.heightPixels / 2;
+        } catch (Throwable t) {
+        }
+        View best = null;
+        long bestDist = Long.MAX_VALUE;
+        int bestTop = Integer.MAX_VALUE;
+        int bestX = Integer.MAX_VALUE;
+        for (View v : targets) {
+            int[] pos = new int[2];
+            try {
+                v.getLocationOnScreen(pos);
+            } catch (Throwable t) {
+                continue;
+            }
+            if (cfg.pickMode.equals("top")) {
+                if (pos[1] < bestTop || (pos[1] == bestTop && pos[0] < bestX)) {
+                    bestTop = pos[1];
+                    bestX = pos[0];
+                    best = v;
+                }
+            } else {
+                long dx = pos[0] + v.getWidth() / 2 - cx;
+                long dy = pos[1] + v.getHeight() / 2 - cy;
+                long d = dx * dx + dy * dy;
+                if (d < bestDist) {
+                    bestDist = d;
+                    best = v;
+                }
+            }
+        }
+        return best != null ? best : targets.get(0);
+    }
+
+    private boolean triggerClick(View v) {
+        if (v.isClickable()) {
+            try {
+                v.performClick();
+                return true;
+            } catch (Throwable t) {
+            }
+        }
+        try {
+            if (v instanceof TextView) {
+                CharSequence cs = ((TextView) v).getText();
+                if (cs instanceof android.text.Spanned) {
+                    android.text.Spanned sp = (android.text.Spanned) cs;
+                    int end = sp.length();
+                    if (end > 0) {
+                        android.text.style.ClickableSpan[] spans =
+                                sp.getSpans(0, end, android.text.style.ClickableSpan.class);
+                        if (spans != null && spans.length > 0) {
+                            spans[0].onClick(v);
+                            return true;
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+        }
+        if (cfg.walkUp) {
+            View cur = v;
+            for (int depth = 0; cur != null && depth < 3; depth++) {
+                if (cur.getParent() instanceof View) {
+                    View p = (View) cur.getParent();
+                    if (p.isClickable()) {
+                        try {
+                            p.performClick();
+                            return true;
+                        } catch (Throwable t) {
+                        }
+                    }
+                    cur = p;
+                } else {
+                    break;
+                }
+            }
+        }
+        return false;
+    }
+}
