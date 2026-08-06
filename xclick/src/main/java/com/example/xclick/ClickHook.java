@@ -251,16 +251,25 @@ public class ClickHook implements IXposedHookLoadPackage {
             View v = stack.pop();
             if (rid != 0) {
                 if (v.getId() == rid) {
-                    if (p.childRegex != null && v instanceof ViewGroup) {
-                        View child = findChildByText((ViewGroup) v, p.childRegex);
-                        if (child != null) out.add(child);
-                    } else {
+                    if (p.childRegex != null) {
+                        if (v instanceof ViewGroup) {
+                            View child = findChildByText((ViewGroup) v, p.childRegex);
+                            if (child != null && !out.contains(child)) out.add(child);
+                        } else if (v instanceof TextView) {
+                            CharSequence cs = ((TextView) v).getText();
+                            if (cs != null && p.childRegex.matcher(cs.toString()).find()
+                                    && !out.contains(v)) {
+                                out.add(v);
+                            }
+                        }
+                    } else if (!out.contains(v)) {
                         out.add(v);
                     }
                 }
             } else if (p.childRegex != null && v instanceof TextView) {
                 CharSequence cs = ((TextView) v).getText();
-                if (cs != null && p.childRegex.matcher(cs.toString()).find()) {
+                if (cs != null && p.childRegex.matcher(cs.toString()).find()
+                        && !out.contains(v)) {
                     out.add(v);
                 }
             }
@@ -275,22 +284,23 @@ public class ClickHook implements IXposedHookLoadPackage {
     }
 
     private View findChildByText(ViewGroup g, java.util.regex.Pattern p) {
-        View found = null;
-        int last = -1;
-        for (int i = 0; i < g.getChildCount(); i++) {
-            View c = g.getChildAt(i);
+        ArrayDeque<View> stack = new ArrayDeque<View>();
+        for (int i = g.getChildCount() - 1; i >= 0; i--) {
+            stack.push(g.getChildAt(i));
+        }
+        while (!stack.isEmpty()) {
+            View c = stack.pop();
             if (c instanceof TextView) {
                 CharSequence cs = ((TextView) c).getText();
-                if (cs != null && p.matcher(cs.toString()).find()) {
-                    if (found == null || i > last) {
-                        found = c;
-                        last = i;
-                    }
+                if (cs != null && p.matcher(cs.toString()).find()) return c;
+            }
+            if (c instanceof ViewGroup) {
+                ViewGroup cg = (ViewGroup) c;
+                for (int i = cg.getChildCount() - 1; i >= 0; i--) {
+                    stack.push(cg.getChildAt(i));
                 }
             }
         }
-        if (found != null) return found;
-        if (g.getChildCount() > 0) return g.getChildAt(g.getChildCount() - 1);
         return null;
     }
 
@@ -472,6 +482,10 @@ public class ClickHook implements IXposedHookLoadPackage {
             v.getLocationOnScreen(loc);
             outXY[0] = Math.round(loc[0] + tv.getCompoundPaddingLeft() + x);
             outXY[1] = Math.round(loc[1] + tv.getCompoundPaddingTop() + y);
+            if (outXY[0] < loc[0] || outXY[1] < loc[1]
+                    || outXY[0] > loc[0] + v.getWidth() || outXY[1] > loc[1] + v.getHeight()) {
+                return false;
+            }
             try {
                 android.util.DisplayMetrics dm = tv.getResources().getDisplayMetrics();
                 if (outXY[0] < 0 || outXY[1] < 0
