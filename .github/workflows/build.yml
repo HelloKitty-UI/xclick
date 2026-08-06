@@ -27,7 +27,7 @@ jobs:
           gradle-version: 8.5
 
       - name: Build APK
-        run: gradle assembleDebug --console=plain
+        run: gradle :app:assembleDebug :xclick:assembleDebug --console=plain
 
       - name: List APK outputs
         run: |
