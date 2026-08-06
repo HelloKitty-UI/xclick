@@ -3,6 +3,7 @@ package com.example.xclick;
 import android.app.Activity;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
 import android.os.Bundle;
@@ -18,73 +19,49 @@ import android.widget.Toast;
 
 import java.io.File;
 import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.List;
 
 public class MainActivity extends Activity {
 
     private static final String CONFIG_PREFS = "xclick_config";
     private static final String CONFIG_KEY = "config";
-    private EditText editText;
+
+    private XConfig cfg = new XConfig();
+    private LinearLayout listContainer;
+    private LinearLayout editContainer;
+    private LinearLayout root;
+    private int editIndex = -1;
+    private EditText debounceEt;
+    private Button consumeBtn;
+
+    private EditText eName;
+    private EditText ePkg;
+    private EditText eKey;
+    private EditText eView;
+    private EditText eChild;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-
-        LinearLayout root = new LinearLayout(this);
+        loadData();
+        root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(dp(12), dp(12), dp(12), dp(12));
-
-        TextView info = new TextView(this);
-        info.setText("配置会同时保存到:\n1. SharedPreferences (LSPosed 新XSharedPreferences)\n"
-                + "2. /data/user/0/com.example.xclick/files/xclick.conf\n"
-                + "3. /storage/emulated/0/ClickTrigger/config.properties (尽量)\n"
-                + "\n保存后无需重启手机，重启目标应用即可生效。");
-        info.setTextSize(13);
-        root.addView(info);
-
-        editText = new EditText(this);
-        editText.setId(android.R.id.content + 1);
-        editText.setGravity(Gravity.TOP | Gravity.START);
-        editText.setTextSize(12);
-        editText.setTypeface(Typeface.MONOSPACE);
-        editText.setMinLines(18);
-        root.addView(editText, new LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f));
-
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-
-        Button btnSave = new Button(this);
-        btnSave.setText("保存配置");
-        btnSave.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                saveConfig();
-            }
-        });
-
-        Button btnReset = new Button(this);
-        btnReset.setText("重置为模板");
-        btnReset.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                editText.setText(XConfig.template());
-            }
-        });
-
-        row.addView(btnSave, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        row.addView(btnReset, new LinearLayout.LayoutParams(0,
-                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
-        root.addView(row);
-
+        listContainer = new LinearLayout(this);
+        listContainer.setOrientation(LinearLayout.VERTICAL);
+        editContainer = new LinearLayout(this);
+        editContainer.setOrientation(LinearLayout.VERTICAL);
+        root.addView(listContainer);
+        root.addView(editContainer);
         ScrollView scroll = new ScrollView(this);
         scroll.addView(root);
         setContentView(scroll);
-
-        loadConfigIntoEditor();
+        editContainer.setVisibility(View.GONE);
+        showList();
     }
 
-    private void loadConfigIntoEditor() {
+    private void loadData() {
         String text = XConfig.readFile(new File(getFilesDir(), "xclick.conf"));
         if (text == null) text = XConfig.readFile(new File(
                 Environment.getExternalStorageDirectory(), "ClickTrigger/config.properties"));
@@ -93,13 +70,246 @@ public class MainActivity extends Activity {
             text = p.getString(CONFIG_KEY, "");
         }
         if (text == null || text.trim().isEmpty()) text = XConfig.template();
-        editText.setText(text);
+        XConfig parsed = XConfig.parse(text);
+        cfg.debounceMs = parsed.debounceMs;
+        cfg.consumeKey = parsed.consumeKey;
+        cfg.profiles = parsed.profiles;
+    }
+
+    private void showList() {
+        editContainer.removeAllViews();
+        editContainer.setVisibility(View.GONE);
+        listContainer.removeAllViews();
+        listContainer.setVisibility(View.VISIBLE);
+
+        TextView title = new TextView(this);
+        title.setText("通用按键点击器 — 配置列表");
+        title.setTextSize(18);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setPadding(0, 0, 0, dp(8));
+        listContainer.addView(title);
+
+        LinearLayout globalRow = new LinearLayout(this);
+        globalRow.setOrientation(LinearLayout.HORIZONTAL);
+        globalRow.setGravity(Gravity.CENTER_VERTICAL);
+        globalRow.setPadding(0, dp(4), 0, dp(4));
+
+        TextView debLabel = new TextView(this);
+        debLabel.setText("防抖ms:");
+        globalRow.addView(debLabel);
+        debounceEt = new EditText(this);
+        debounceEt.setText(String.valueOf(cfg.debounceMs));
+        debounceEt.setInputType(android.text.InputType.TYPE_CLASS_NUMBER);
+        debounceEt.setWidth(dp(80));
+        debounceEt.setTextSize(14);
+        globalRow.addView(debounceEt);
+
+        TextView space = new TextView(this);
+        space.setText("    ");
+        globalRow.addView(space);
+
+        consumeBtn = new Button(this);
+        consumeBtn.setText(cfg.consumeKey ? "吞掉按键:开" : "吞掉按键:关");
+        consumeBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cfg.consumeKey = !cfg.consumeKey;
+                consumeBtn.setText(cfg.consumeKey ? "吞掉按键:开" : "吞掉按键:关");
+            }
+        });
+        globalRow.addView(consumeBtn);
+
+        Button saveGlobal = new Button(this);
+        saveGlobal.setText("保存全部");
+        saveGlobal.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                saveConfig();
+            }
+        });
+        globalRow.addView(saveGlobal);
+        listContainer.addView(globalRow);
+
+        TextView tip = new TextView(this);
+        tip.setText("配置列表（点击“编辑”可修改）：");
+        tip.setTextSize(14);
+        tip.setPadding(0, dp(10), 0, dp(4));
+        listContainer.addView(tip);
+
+        if (cfg.profiles.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("还没有配置，点下方“＋ 新建配置”添加");
+            empty.setTextSize(14);
+            empty.setTextColor(Color.GRAY);
+            empty.setPadding(0, dp(8), 0, dp(8));
+            listContainer.addView(empty);
+        }
+
+        for (int i = 0; i < cfg.profiles.size(); i++) {
+            final XConfig.Profile p = cfg.profiles.get(i);
+            final int idx = i;
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(6), 0, dp(6));
+
+            TextView info = new TextView(this);
+            info.setText("[" + p.name + "] " + p.keyName + " -> view=" + p.viewId
+                    + (p.childText != null ? " (文本:" + p.childText + ")" : "")
+                    + "  包名:" + p.pkg);
+            info.setTextSize(13);
+            info.setPadding(0, 0, dp(6), 0);
+            row.addView(info, new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            Button editBtn = new Button(this);
+            editBtn.setText("编辑");
+            editBtn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    openEditor(idx);
+                }
+            });
+            row.addView(editBtn);
+
+            Button delBtn = new Button(this);
+            delBtn.setText("删除");
+            delBtn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    cfg.profiles.remove(idx);
+                    saveConfig();
+                    showList();
+                }
+            });
+            row.addView(delBtn);
+            listContainer.addView(row);
+        }
+
+        Button addBtn = new Button(this);
+        addBtn.setText("＋ 新建配置");
+        addBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openEditor(-1);
+            }
+        });
+        listContainer.addView(addBtn);
+    }
+
+    private void openEditor(int index) {
+        editIndex = index;
+        listContainer.setVisibility(View.GONE);
+        editContainer.setVisibility(View.VISIBLE);
+        editContainer.removeAllViews();
+
+        XConfig.Profile p = (index >= 0 && index < cfg.profiles.size())
+                ? cfg.profiles.get(index) : null;
+
+        TextView title = new TextView(this);
+        title.setText(p == null ? "新建配置" : "编辑配置");
+        title.setTextSize(18);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setPadding(0, 0, 0, dp(8));
+        editContainer.addView(title);
+
+        eName = new EditText(this);
+        eName.setHint("名称（如：视频全屏）");
+        eName.setText(p != null ? p.name : "");
+        eName.setSingleLine(true);
+        editContainer.addView(eName);
+
+        ePkg = new EditText(this);
+        ePkg.setHint("生效应用包名（如 com.bilibili.app.in）");
+        ePkg.setText(p != null ? p.pkg : "");
+        ePkg.setSingleLine(true);
+        editContainer.addView(ePkg);
+
+        eKey = new EditText(this);
+        eKey.setHint("触发按键（VOLUME_DOWN / VOLUME_UP / DPAD_UP ...）");
+        eKey.setText(p != null ? p.keyName : "VOLUME_DOWN");
+        eKey.setSingleLine(true);
+        editContainer.addView(eKey);
+
+        eView = new EditText(this);
+        eView.setHint("要点击的 view id（如 gemini_halfscreen_expand）");
+        eView.setText(p != null ? p.viewId : "");
+        eView.setSingleLine(true);
+        editContainer.addView(eView);
+
+        eChild = new EditText(this);
+        eChild.setHint("可选：view 内要点击的子文本（如 共.*条回复），留空点整个 view");
+        eChild.setText(p != null && p.childText != null ? p.childText : "");
+        eChild.setSingleLine(true);
+        editContainer.addView(eChild);
+
+        TextView hint = new TextView(this);
+        hint.setText("隐藏的按钮也能点中（如收起控制条时的全屏按钮），无需额外设置。");
+        hint.setTextSize(12);
+        hint.setTextColor(Color.GRAY);
+        hint.setPadding(0, dp(4), 0, dp(4));
+        editContainer.addView(hint);
+
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setPadding(0, dp(8), 0, 0);
+
+        Button saveBtn = new Button(this);
+        saveBtn.setText("保存");
+        saveBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                XConfig.Profile n = new XConfig.Profile();
+                n.name = eName.getText().toString().trim();
+                n.pkg = ePkg.getText().toString().trim();
+                n.keyName = eKey.getText().toString().trim();
+                n.keyCode = XConfig.parseKey(n.keyName);
+                n.viewId = eView.getText().toString().trim();
+                String ch = eChild.getText().toString().trim();
+                if (!ch.isEmpty()) {
+                    n.childText = ch;
+                    try {
+                        n.childRegex = java.util.regex.Pattern.compile(ch);
+                    } catch (Exception ex) {
+                        n.childRegex = null;
+                    }
+                }
+                if (n.name.isEmpty()) n.name = "配置";
+                if (editIndex >= 0 && editIndex < cfg.profiles.size()) {
+                    cfg.profiles.set(editIndex, n);
+                } else {
+                    cfg.profiles.add(n);
+                }
+                saveConfig();
+                showList();
+            }
+        });
+        row.addView(saveBtn);
+
+        Button cancelBtn = new Button(this);
+        cancelBtn.setText("取消");
+        cancelBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showList();
+            }
+        });
+        row.addView(cancelBtn);
+        editContainer.addView(row);
     }
 
     private void saveConfig() {
-        String text = editText.getText().toString();
-        int saved = 0;
+        try {
+            cfg.debounceMs = Long.parseLong(debounceEt.getText().toString());
+        } catch (Exception e) {
+        }
+        StringBuilder sb = new StringBuilder();
+        sb.append("debounce_ms=").append(cfg.debounceMs).append("\n");
+        sb.append("consume_key=").append(cfg.consumeKey ? 1 : 0).append("\n");
+        sb.append(cfg.toString());
+        String text = sb.toString();
 
+        int saved = 0;
         try {
             SharedPreferences p = getSharedPreferences(CONFIG_PREFS, Context.MODE_WORLD_READABLE);
             p.edit().putString(CONFIG_KEY, text).commit();
@@ -114,10 +324,8 @@ public class MainActivity extends Activity {
                 prefsFile.setReadable(true, false);
                 saved++;
             } catch (Throwable t2) {
-                Toast.makeText(this, "prefs保存失败: " + t2, Toast.LENGTH_LONG).show();
             }
         }
-
         try {
             File f = new File(getFilesDir(), "xclick.conf");
             FileOutputStream out = new FileOutputStream(f);
@@ -127,9 +335,7 @@ public class MainActivity extends Activity {
             f.setWritable(true, false);
             saved++;
         } catch (Throwable t) {
-            Toast.makeText(this, "内部文件保存失败: " + t, Toast.LENGTH_LONG).show();
         }
-
         if (Build.VERSION.SDK_INT <= 29) {
             try {
                 File dir = new File(Environment.getExternalStorageDirectory(), "ClickTrigger");
@@ -140,13 +346,9 @@ public class MainActivity extends Activity {
                 out.close();
                 saved++;
             } catch (Throwable t) {
-                Toast.makeText(this, "sdcard保存失败: " + t, Toast.LENGTH_LONG).show();
             }
-        } else {
-            Toast.makeText(this, "Android 10+ 跳过sdcard写入(前两个配置源已够用)", Toast.LENGTH_LONG).show();
         }
-
-        Toast.makeText(this, "已保存 " + saved + " 个配置源，重启目标应用生效", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "已保存 " + saved + " 个位置，重启目标应用生效", Toast.LENGTH_LONG).show();
     }
 
     private int dp(int v) {

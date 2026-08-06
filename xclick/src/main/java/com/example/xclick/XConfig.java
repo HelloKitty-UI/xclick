@@ -4,51 +4,114 @@ import android.view.KeyEvent;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.regex.Pattern;
+import java.util.regex.PatternSyntaxException;
 
 public class XConfig {
 
-    public int keyCode = KeyEvent.KEYCODE_VOLUME_UP;
-    public String keyName = "VOLUME_UP";
-    public Set<String> packages = new HashSet<String>();
-    public List<String> viewIds = new ArrayList<String>();
-    public Pattern childRegex = null;
-    public Pattern textRegex = null;
-    public String pickMode = "closest";
-    public boolean walkUp = true;
-    public boolean consumeKey = true;
     public long debounceMs = 600;
-    public String rawText = "";
-    public String source = "";
+    public boolean consumeKey = true;
 
-    public boolean matchesPackage(String pkg) {
-        if (packages.isEmpty()) return true;
-        return packages.contains(pkg);
+    public static class Profile {
+        public String name = "未命名";
+        public String pkg = "";
+        public int keyCode = KeyEvent.KEYCODE_VOLUME_UP;
+        public String keyName = "VOLUME_UP";
+        public String viewId = "";
+        public String childText = null;
+        public Pattern childRegex = null;
+
+        public boolean matchesPackage(String p) {
+            return pkg == null || pkg.trim().isEmpty() || p.trim().equals(pkg.trim());
+        }
+
+        public boolean matchesKey(int key) {
+            return keyCode == key;
+        }
     }
 
+    public List<Profile> profiles = new ArrayList<Profile>();
+
     public static String template() {
-        return "# 通用按键点击器配置 (修改后保存即可，无需重启手机；重启目标应用生效)\n"
-                + "# 生效的应用包名(逗号分隔)，留空=所有应用\n"
-                + "packages=com.bilibili.app.in\n"
-                + "# 触发按键: VOLUME_UP / VOLUME_DOWN / DPAD_UP / DPAD_DOWN / DPAD_LEFT / DPAD_RIGHT / DPAD_CENTER / ENTER / BACK / PAGE_UP / PAGE_DOWN / SPACE / F1~F12 / KEYCODE_CAMERA\n"
-                + "keys=VOLUME_UP\n"
-                + "# 要点击的view id(逗号分隔，可多个，取匹配中最近的)\n"
-                + "view_id=plugin_comment_widget\n"
-                + "# 可选: 在匹配view内部查找文本命中的子view（留空=点view本身）\n"
-                + "#child_text_regex=共[0-9,，.万wW]+条回复\n"
-                + "# 可选: 不填view_id时，直接按文本匹配所有TextView\n"
-                + "#text_regex=共[0-9,，.万wW]+条回复\n"
-                + "# 匹配到多个时选哪个: closest=离屏幕中心最近 top=最靠上 first=找到的第一个\n"
-                + "pick_mode=closest\n"
-                + "# 点击成功后是否消费掉按键(0=不消费，1=消费，音量键不再弹音量条)\n"
-                + "consume_key=1\n"
-                + "# 点击目标无响应时是否向上找可点击父级(0/1)\n"
-                + "walk_up_parent=1\n"
-                + "# 防抖毫秒\n"
-                + "debounce_ms=600";
+        return "# 通用按键点击器配置\n"
+                + "# 每个配置用 [名字] 开头，然后 3 行必填：\n"
+                + "#   pkg  = 生效的应用包名\n"
+                + "#   key  = 触发按键 (VOLUME_DOWN / VOLUME_UP / DPAD_UP ...)\n"
+                + "#   view = 要点击的 view id (应用内 id 名字)\n"
+                + "# 可选第 4 行：child = 点击 view 内文本命中的那一部分\n"
+                + "[B站-音量大展开回复]\n"
+                + "pkg=com.bilibili.app.in\n"
+                + "key=VOLUME_UP\n"
+                + "view=plugin_comment_widget\n"
+                + "child=共[0-9][0-9,万wW]*条回复\n"
+                + "[B站-音量减小全屏]\n"
+                + "pkg=com.bilibili.app.in\n"
+                + "key=VOLUME_DOWN\n"
+                + "view=gemini_halfscreen_expand\n";
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        for (Profile p : profiles) {
+            sb.append('[').append(p.name).append("]\n");
+            sb.append("pkg=").append(p.pkg).append("\n");
+            sb.append("key=").append(p.keyName).append("\n");
+            sb.append("view=").append(p.viewId).append("\n");
+            if (p.childText != null && !p.childText.isEmpty()) {
+                sb.append("child=").append(p.childText).append("\n");
+            }
+        }
+        return sb.toString();
+    }
+
+    public static XConfig parse(String text) {
+        XConfig cfg = new XConfig();
+        if (text == null) return cfg;
+        Profile cur = null;
+        String[] lines = text.split("\n");
+        for (String line : lines) {
+            String t = line.trim();
+            if (t.isEmpty() || t.startsWith("#")) continue;
+            if (t.startsWith("[") && t.endsWith("]")) {
+                cur = new Profile();
+                cur.name = t.substring(1, t.length() - 1).trim();
+                cfg.profiles.add(cur);
+                continue;
+            }
+            int eq = t.indexOf('=');
+            if (eq <= 0) continue;
+            String k = t.substring(0, eq).trim().toLowerCase();
+            String v = t.substring(eq + 1).trim();
+            if (cur == null) {
+                if (k.equals("debounce_ms")) {
+                    try {
+                        cfg.debounceMs = Long.parseLong(v);
+                    } catch (Exception e) {
+                    }
+                } else if (k.equals("consume_key")) {
+                    cfg.consumeKey = !v.equals("0");
+                }
+                continue;
+            }
+            if (k.equals("pkg")) {
+                cur.pkg = v;
+            } else if (k.equals("key")) {
+                cur.keyName = v;
+                cur.keyCode = parseKey(v);
+            } else if (k.equals("view")) {
+                cur.viewId = v;
+            } else if (k.equals("child")) {
+                try {
+                    cur.childText = v;
+                    cur.childRegex = Pattern.compile(v);
+                } catch (PatternSyntaxException e) {
+                    cur.childRegex = null;
+                }
+            }
+        }
+        return cfg;
     }
 
     public static int parseKey(String name) {
@@ -74,51 +137,6 @@ public class XConfig {
         } catch (Throwable t) {
             return KeyEvent.KEYCODE_VOLUME_UP;
         }
-    }
-
-    public static XConfig parse(String text) {
-        XConfig c = new XConfig();
-        if (text == null) return c;
-        c.rawText = text;
-        String[] lines = text.split("\n");
-        for (String line : lines) {
-            String t = line.trim();
-            if (t.isEmpty() || t.startsWith("#")) continue;
-            int eq = t.indexOf('=');
-            if (eq <= 0) continue;
-            String k = t.substring(0, eq).trim().toLowerCase();
-            String v = t.substring(eq + 1).trim();
-            if (k.equals("keys")) {
-                c.keyName = v;
-                c.keyCode = parseKey(v);
-            } else if (k.equals("packages")) {
-                for (String p : v.split(",")) {
-                    String pp = p.trim();
-                    if (!pp.isEmpty()) c.packages.add(pp);
-                }
-            } else if (k.equals("view_id")) {
-                for (String p : v.split(",")) {
-                    String pp = p.trim();
-                    if (!pp.isEmpty()) c.viewIds.add(pp);
-                }
-            } else if (k.equals("child_text_regex")) {
-                if (!v.isEmpty()) c.childRegex = Pattern.compile(v);
-            } else if (k.equals("text_regex")) {
-                if (!v.isEmpty()) c.textRegex = Pattern.compile(v);
-            } else if (k.equals("pick_mode")) {
-                c.pickMode = v;
-            } else if (k.equals("walk_up_parent")) {
-                c.walkUp = !v.equals("0");
-            } else if (k.equals("consume_key")) {
-                c.consumeKey = !v.equals("0");
-            } else if (k.equals("debounce_ms")) {
-                try {
-                    c.debounceMs = Long.parseLong(v);
-                } catch (Exception e) {
-                }
-            }
-        }
-        return c;
     }
 
     public static String readFile(File f) {
