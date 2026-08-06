@@ -156,7 +156,7 @@ public class ClickHook implements IXposedHookLoadPackage {
                 });
     }
 
-    private boolean trigger(XConfig.Profile p, Activity activity, XC_LoadPackage.LoadPackageParam lpparam) {
+    private boolean trigger(final XConfig.Profile p, Activity activity, XC_LoadPackage.LoadPackageParam lpparam) {
         if (activity == null) return false;
         View root = activity.getWindow().getDecorView();
         if (root == null) return false;
@@ -178,9 +178,10 @@ public class ClickHook implements IXposedHookLoadPackage {
                     + c.getClass().getName() + " shown=" + c.isShown() + " text=" + txt);
         }
         View pick = pick(candidates, activity);
+        View decor = activity.getWindow().getDecorView();
         final View clicked = pick;
         final String beforeText = textOf(pick);
-        boolean ok = triggerClick(pick, p);
+        boolean ok = triggerClick(pick, decor instanceof ViewGroup ? (ViewGroup) decor : null, p);
         XposedBridge.log("[XClick] [" + p.name + "] 选定候选" + candidates.indexOf(pick)
                 + " clickable=" + pick.isClickable() + " onClickListener=" + hasClickListener(pick)
                 + " 点击结果=" + ok);
@@ -325,10 +326,16 @@ public class ClickHook implements IXposedHookLoadPackage {
         return best != null ? best : pool.get(0);
     }
 
-    private boolean triggerClick(View v, XConfig.Profile p) {
+    private boolean triggerClick(View v, ViewGroup root, XConfig.Profile p) {
         if (clickSpan(v, p)) {
             XposedBridge.log("[XClick] 点击方式: span");
             return true;
+        }
+        if (v.isShown() && root != null) {
+            if (dispatchTouch(root, v)) {
+                XposedBridge.log("[XClick] 点击方式: 真实触摸(含父级冒泡)");
+                return true;
+            }
         }
         try {
             v.performClick();
@@ -342,8 +349,8 @@ public class ClickHook implements IXposedHookLoadPackage {
             return true;
         } catch (Throwable t) {
         }
-        if (simulateTouch(v)) {
-            XposedBridge.log("[XClick] 点击方式: 模拟触摸");
+        if (root != null && dispatchTouch(root, v)) {
+            XposedBridge.log("[XClick] 点击方式: 触摸兜底");
             return true;
         }
         View cur = v;
@@ -411,7 +418,7 @@ public class ClickHook implements IXposedHookLoadPackage {
         return false;
     }
 
-    private boolean simulateTouch(View v) {
+    private boolean dispatchTouch(ViewGroup root, View v) {
         try {
             int[] loc = new int[2];
             v.getLocationOnScreen(loc);
@@ -419,10 +426,12 @@ public class ClickHook implements IXposedHookLoadPackage {
             float y = loc[1] + v.getHeight() / 2f;
             long t = SystemClock.uptimeMillis();
             MotionEvent down = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0);
-            v.dispatchTouchEvent(down);
+            down.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+            root.dispatchTouchEvent(down);
             down.recycle();
-            MotionEvent up = MotionEvent.obtain(t + 60, t + 60, MotionEvent.ACTION_UP, x, y, 0);
-            v.dispatchTouchEvent(up);
+            MotionEvent up = MotionEvent.obtain(t + 80, t + 80, MotionEvent.ACTION_UP, x, y, 0);
+            up.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
+            root.dispatchTouchEvent(up);
             up.recycle();
             return true;
         } catch (Throwable t) {
