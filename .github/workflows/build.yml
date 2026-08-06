@@ -29,14 +29,20 @@ jobs:
       - name: Build APK
         run: gradle assembleDebug
 
+      - name: Collect APKs
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/bilibili-volume-fullscreen.apk
+          cp xclick/build/outputs/apk/debug/app-debug.apk dist/xclick.apk
+
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: bilibili-volume-fullscreen-apk
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: apks
+          path: dist/
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: app/build/outputs/apk/debug/app-debug.apk
+          files: dist/*
