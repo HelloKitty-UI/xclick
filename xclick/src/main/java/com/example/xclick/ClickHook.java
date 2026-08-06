@@ -37,6 +37,9 @@ public class ClickHook implements IXposedHookLoadPackage {
     private long lastLocalClick = 0;
     private volatile boolean watcherStarted = false;
     private volatile boolean activityStopped = false;
+    private volatile long clickTime = 0;
+    private volatile long lastUserKey = 0;
+    private volatile long lastUserTouch = 0;
     private String pkg;
     private XC_LoadPackage.LoadPackageParam lp;
     private XConfig cfg;
@@ -119,6 +122,7 @@ public class ClickHook implements IXposedHookLoadPackage {
                             KeyEvent event = (KeyEvent) param.args[0];
                             if (event == null) return;
                             if (event.getAction() != KeyEvent.ACTION_DOWN) return;
+                            lastUserKey = System.currentTimeMillis();
                             boolean keyWanted = false;
                             for (XConfig.Profile p : cfg.profiles) {
                                 if (p.matchesKey(event.getKeyCode())) {
@@ -183,6 +187,25 @@ public class ClickHook implements IXposedHookLoadPackage {
                 @Override
                 protected void beforeHookedMethod(MethodHookParam param) {
                     activityStopped = true;
+                }
+            });
+        } catch (Throwable t) {
+        }
+        try {
+            XposedHelpers.findAndHookMethod(Activity.class, "dispatchTouchEvent",
+                    android.view.MotionEvent.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            lastUserTouch = System.currentTimeMillis();
+                        }
+                    });
+        } catch (Throwable t) {
+        }
+        try {
+            XposedHelpers.findAndHookMethod(Activity.class, "onBackPressed", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    lastUserKey = System.currentTimeMillis();
                 }
             });
         } catch (Throwable t) {
@@ -318,6 +341,7 @@ public class ClickHook implements IXposedHookLoadPackage {
     private boolean trigger(final XConfig.Profile p, Activity activity, XC_LoadPackage.LoadPackageParam lpparam) {
         if (activity == null) return false;
         activityStopped = false;
+        clickTime = System.currentTimeMillis();
         final Activity clickAct = activity;
         View root = activity.getWindow().getDecorView();
         if (root == null) return false;
@@ -363,7 +387,8 @@ public class ClickHook implements IXposedHookLoadPackage {
                     XposedBridge.log("[XClick] [" + p.name + "] 点击前文本=" + beforeText
                             + " 点击后文本=" + after);
                     if (after.equals(beforeText) && clicked.isShown() && froot != null
-                            && !activityStopped && currentActivity.get() == clickAct) {
+                            && !activityStopped && currentActivity.get() == clickAct
+                            && clickTime >= lastUserKey && clickTime >= lastUserTouch) {
                         try {
                             final View cv = clicked;
                             froot.post(new Runnable() {
