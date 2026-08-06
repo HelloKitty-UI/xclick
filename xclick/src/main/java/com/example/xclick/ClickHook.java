@@ -327,13 +327,20 @@ public class ClickHook implements IXposedHookLoadPackage {
     }
 
     private boolean triggerClick(View v, ViewGroup root, XConfig.Profile p) {
+        int[] xy = new int[2];
+        if (v.isShown() && root != null && tapTextPoint(v, p, xy)) {
+            if (dispatchTouchAt(root, xy[0], xy[1])) {
+                XposedBridge.log("[XClick] 点击方式: 精准坐标触摸(命中文字)");
+                return true;
+            }
+        }
         if (clickSpan(v, p)) {
             XposedBridge.log("[XClick] 点击方式: span");
             return true;
         }
         if (v.isShown() && root != null) {
             if (dispatchTouch(root, v)) {
-                XposedBridge.log("[XClick] 点击方式: 真实触摸(含父级冒泡)");
+                XposedBridge.log("[XClick] 点击方式: 真实触摸(中心)");
                 return true;
             }
         }
@@ -369,6 +376,53 @@ public class ClickHook implements IXposedHookLoadPackage {
             }
         }
         return false;
+    }
+
+    private boolean tapTextPoint(View v, XConfig.Profile p, int[] outXY) {
+        try {
+            if (!(v instanceof TextView)) return false;
+            TextView tv = (TextView) v;
+            CharSequence cs = tv.getText();
+            if (cs == null) return false;
+            String text = cs.toString();
+            if (text.length() == 0) return false;
+            int offset = -1;
+            if (cs instanceof android.text.Spanned) {
+                android.text.Spanned sp = (android.text.Spanned) cs;
+                android.text.style.ClickableSpan[] spans =
+                        sp.getSpans(0, sp.length(), android.text.style.ClickableSpan.class);
+                if (spans != null) {
+                    for (android.text.style.ClickableSpan span : spans) {
+                        int s = sp.getSpanStart(span);
+                        int e = sp.getSpanEnd(span);
+                        String sub = text.substring(Math.max(0, s), Math.min(e, text.length()));
+                        if (p.childRegex != null
+                                && sub.matches(".*" + p.childRegex.pattern() + ".*")) {
+                            offset = s;
+                            break;
+                        }
+                        if (offset < 0) offset = s;
+                    }
+                }
+            }
+            if (offset < 0 && p.childRegex != null) {
+                java.util.regex.Matcher m = p.childRegex.matcher(text);
+                if (m.find()) offset = m.start();
+            }
+            if (offset < 0 || offset >= text.length()) return false;
+            android.text.Layout layout = tv.getLayout();
+            if (layout == null) return false;
+            int line = layout.getLineForOffset(offset);
+            float x = layout.getPrimaryHorizontal(offset) + 2;
+            float y = (layout.getLineTop(line) + layout.getLineBottom(line)) / 2f;
+            int[] loc = new int[2];
+            v.getLocationOnScreen(loc);
+            outXY[0] = Math.round(loc[0] + tv.getPaddingLeft() + x);
+            outXY[1] = Math.round(loc[1] + tv.getPaddingTop() + y);
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private boolean clickSpan(View v, XConfig.Profile p) {
@@ -422,8 +476,14 @@ public class ClickHook implements IXposedHookLoadPackage {
         try {
             int[] loc = new int[2];
             v.getLocationOnScreen(loc);
-            float x = loc[0] + v.getWidth() / 2f;
-            float y = loc[1] + v.getHeight() / 2f;
+            return dispatchTouchAt(root, loc[0] + v.getWidth() / 2f, loc[1] + v.getHeight() / 2f);
+        } catch (Throwable t) {
+            return false;
+        }
+    }
+
+    private boolean dispatchTouchAt(ViewGroup root, float x, float y) {
+        try {
             long t = SystemClock.uptimeMillis();
             MotionEvent down = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0);
             down.setSource(android.view.InputDevice.SOURCE_TOUCHSCREEN);
