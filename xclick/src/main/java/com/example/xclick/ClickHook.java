@@ -1,8 +1,12 @@
 package com.example.xclick;
 
 import android.app.Activity;
+import android.os.Handler;
+import android.os.Looper;
+import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
@@ -174,10 +178,45 @@ public class ClickHook implements IXposedHookLoadPackage {
                     + c.getClass().getName() + " shown=" + c.isShown() + " text=" + txt);
         }
         View pick = pick(candidates, activity);
+        final View clicked = pick;
+        final String beforeText = textOf(pick);
         boolean ok = triggerClick(pick, p);
         XposedBridge.log("[XClick] [" + p.name + "] 选定候选" + candidates.indexOf(pick)
-                + " 可见=" + pick.isShown() + " 点击结果=" + ok);
+                + " clickable=" + pick.isClickable() + " onClickListener=" + hasClickListener(pick)
+                + " 点击结果=" + ok);
+        try {
+            new Handler(Looper.getMainLooper()).postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    String after = textOf(clicked);
+                    XposedBridge.log("[XClick] [" + p.name + "] 点击前文本=" + beforeText
+                            + " 点击后文本=" + after);
+                }
+            }, 1500);
+        } catch (Throwable t) {
+        }
         return ok;
+    }
+
+    private static String textOf(View v) {
+        try {
+            if (v instanceof TextView) {
+                CharSequence cs = ((TextView) v).getText();
+                return cs == null ? "" : cs.toString();
+            }
+        } catch (Throwable t) {
+        }
+        return "";
+    }
+
+    private static boolean hasClickListener(View v) {
+        try {
+            java.lang.reflect.Field f = View.class.getDeclaredField("mOnClickListener");
+            f.setAccessible(true);
+            return f.get(v) != null;
+        } catch (Throwable t) {
+            return true;
+        }
     }
 
     private List<View> collectCandidates(XConfig.Profile p, View root, XC_LoadPackage.LoadPackageParam lpparam) {
@@ -301,6 +340,7 @@ public class ClickHook implements IXposedHookLoadPackage {
             return true;
         } catch (Throwable t) {
         }
+        if (simulateTouch(v)) return true;
         View cur = v;
         for (int depth = 0; cur != null && depth < 2; depth++) {
             if (cur.getParent() instanceof View) {
@@ -316,6 +356,25 @@ public class ClickHook implements IXposedHookLoadPackage {
             }
         }
         return false;
+    }
+
+    private boolean simulateTouch(View v) {
+        try {
+            int[] loc = new int[2];
+            v.getLocationOnScreen(loc);
+            float x = loc[0] + v.getWidth() / 2f;
+            float y = loc[1] + v.getHeight() / 2f;
+            long t = SystemClock.uptimeMillis();
+            MotionEvent down = MotionEvent.obtain(t, t, MotionEvent.ACTION_DOWN, x, y, 0);
+            v.dispatchTouchEvent(down);
+            down.recycle();
+            MotionEvent up = MotionEvent.obtain(t + 60, t + 60, MotionEvent.ACTION_UP, x, y, 0);
+            v.dispatchTouchEvent(up);
+            up.recycle();
+            return true;
+        } catch (Throwable t) {
+            return false;
+        }
     }
 
     private boolean clickSpan(View v) {
