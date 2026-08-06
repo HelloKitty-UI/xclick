@@ -42,19 +42,8 @@ jobs:
         run: |
           mkdir -p dist
           cp app/build/outputs/apk/debug/app-debug.apk dist/bilibili-volume-fullscreen.apk
-          if [ ! -f xclick/build/outputs/apk/debug/app-debug.apk ]; then
-            echo '=== xclick APK 缺失，诊断信息如下 ==='
-            echo '--- settings.gradle ---'
-            cat settings.gradle
-            echo '--- xclick 目录下的文件 ---'
-            find xclick -type f 2>&1 | sort || echo 'xclick 目录不存在!'
-            echo '--- xclick/build 目录 ---'
-            ls -R xclick/build 2>&1 || echo 'xclick/build 目录不存在!'
-            echo '--- 全部 APK ---'
-            find . -name '*.apk' -not -path '*/dist/*' | sort
-            exit 1
-          fi
           cp xclick/build/outputs/apk/debug/xclick-debug.apk dist/xclick.apk
+          ls -la dist/
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
