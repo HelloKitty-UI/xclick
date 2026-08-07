@@ -30,7 +30,7 @@ jobs:
           gradle-version: 8.5
 
       - name: Build APK
-        run: gradle :xclick:assembleDebug :xclick:assembleRelease --console=plain
+        run: gradle :xclick:assembleDebug --console=plain
 
       - name: List APK outputs
         run: |
@@ -44,7 +44,7 @@ jobs:
       - name: Collect APKs
         run: |
           mkdir -p dist
-          cp xclick/build/outputs/apk/release/xclick-release.apk dist/xclick.apk
+          cp xclick/build/outputs/apk/debug/xclick-debug.apk dist/xclick.apk
           ls -la dist/
 
       - name: Upload APK
