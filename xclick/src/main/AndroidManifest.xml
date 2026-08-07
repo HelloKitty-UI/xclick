@@ -20,11 +20,6 @@
             </intent-filter>
         </activity>
 
-        <provider
-            android:name=".Dr270Provider"
-            android:authorities="com.example.xclick.dr270"
-            android:exported="true" />
-
         <meta-data
             android:name="xposedmodule"
             android:value="true" />
