@@ -34,6 +34,7 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private void hookSystemDisplayRotation(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
+            XposedBridge.log("[XClick] DR270 entering hookSystemDisplayRotation");
             java.io.File conf = new java.io.File("/data/data/com.example.xclick/files/xclick.conf");
             XposedBridge.log("[XClick] DR270 sys-load confExists=" + conf.exists()
                     + " confCanRead=" + conf.canRead());
@@ -181,6 +182,7 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) {
+        XposedBridge.log("[XClick] loadPackage pkg=" + lpparam.packageName);
         if ("android".equals(lpparam.packageName)) {
             hookSystemDisplayRotation(lpparam);
             return;
