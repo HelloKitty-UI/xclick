@@ -74,6 +74,7 @@ public class MainActivity extends Activity {
         XConfig parsed = XConfig.parse(text);
         cfg.debounceMs = parsed.debounceMs;
         cfg.consumeKey = parsed.consumeKey;
+        cfg.rotate270 = parsed.rotate270;
         cfg.profiles = parsed.profiles;
     }
 
@@ -327,6 +328,7 @@ public class MainActivity extends Activity {
         StringBuilder sb = new StringBuilder();
         sb.append("debounce_ms=").append(cfg.debounceMs).append("\n");
         sb.append("consume_key=").append(cfg.consumeKey ? 1 : 0).append("\n");
+        sb.append("rotate_270=").append(cfg.rotate270 ? 1 : 0).append("\n");
         sb.append(cfg.toString());
         String text = sb.toString();
 
