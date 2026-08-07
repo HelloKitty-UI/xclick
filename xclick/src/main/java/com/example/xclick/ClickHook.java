@@ -32,6 +32,79 @@ public class ClickHook implements IXposedHookLoadPackage {
     private static final java.util.regex.Pattern REPLY_TEXT =
             java.util.regex.Pattern.compile("共[0-9][0-9,，.万wW]*条回复");
 
+    private void hookSystemDisplayRotation(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            Class<?> clazz = XposedHelpers.findClass(
+                    "com.android.server.wm.DisplayRotation", lpparam.classLoader);
+            XposedHelpers.findAndHookMethod(clazz, "rotationForOrientation",
+                    int.class, int.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            if (!isRotate270Enabled()) return;
+                            int orientation = ((Integer) param.args[0]).intValue();
+                            int rotation = ((Integer) param.getResult()).intValue();
+                            if (rotation == android.view.Surface.ROTATION_90
+                                    && isLandscapeOrientation(orientation)) {
+                                param.setResult(android.view.Surface.ROTATION_270);
+                                XposedBridge.log("[XClick] DR270: orientation=" + orientation
+                                        + " ROTATION_90 -> ROTATION_270");
+                            }
+                        }
+                    });
+            XposedBridge.log("[XClick] DisplayRotation.rotationForOrientation hooked (DR270)");
+        } catch (Throwable t) {
+            XposedBridge.log("[XClick] DR270 hook失败");
+            XposedBridge.log(t);
+        }
+    }
+
+    private static boolean isLandscapeOrientation(int orientation) {
+        switch (orientation) {
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_BEHIND:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_NOSENSOR:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_SENSOR:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_USER_LANDSCAPE:
+            case android.content.pm.ActivityInfo.SCREEN_ORIENTATION_FULL_USER:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static boolean isRotate270Enabled() {
+        String text = XConfig.readFile(new File("/data/data/com.example.xclick/files/xclick.conf"));
+        if (text == null || text.trim().isEmpty()) {
+            try {
+                de.robv.android.xposed.XSharedPreferences prefs =
+                        new de.robv.android.xposed.XSharedPreferences("com.example.xclick", CONFIG_PREFS);
+                prefs.makeWorldReadable();
+                prefs.reload();
+                if (prefs.getFile() != null && prefs.getFile().canRead()) {
+                    text = prefs.getString(CONFIG_KEY, "");
+                }
+            } catch (Throwable t) {
+            }
+        }
+        if (text == null) return false;
+        for (String line : text.split("\n")) {
+            String t = line.trim();
+            if (t.isEmpty() || t.startsWith("#")) continue;
+            int eq = t.indexOf('=');
+            if (eq <= 0) continue;
+            String k = t.substring(0, eq).trim().toLowerCase();
+            if (k.equals("rotate_270") || k.equals("rotate270")) {
+                return !t.substring(eq + 1).trim().equals("0");
+            }
+        }
+        return false;
+    }
+
     private long lastTrigger = 0;
     private long lastKeyWrite = 0;
     private long lastLocalClick = 0;
@@ -85,6 +158,10 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) {
+        if ("android".equals(lpparam.packageName)) {
+            hookSystemDisplayRotation(lpparam);
+            return;
+        }
         if (lpparam.packageName.equals("com.example.xclick")) return;
         try {
             cfg = loadConfig();

@@ -34,6 +34,7 @@ public class MainActivity extends Activity {
     private int editIndex = -1;
     private EditText debounceEt;
     private Button consumeBtn;
+    private Button rotate270Btn;
 
     private EditText eName;
     private EditText ePkg;
@@ -118,6 +119,22 @@ public class MainActivity extends Activity {
             }
         });
         globalRow.addView(consumeBtn);
+
+        TextView space2 = new TextView(this);
+        space2.setText("    ");
+        globalRow.addView(space2);
+
+        rotate270Btn = new Button(this);
+        updateRotate270Text();
+        rotate270Btn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cfg.rotate270 = !cfg.rotate270;
+                updateRotate270Text();
+                saveConfig();
+            }
+        });
+        globalRow.addView(rotate270Btn);
 
         Button saveGlobal = new Button(this);
         saveGlobal.setText("保存全部");
@@ -298,6 +315,10 @@ public class MainActivity extends Activity {
         editContainer.addView(row);
     }
 
+    private void updateRotate270Text() {
+        rotate270Btn.setText(cfg.rotate270 ? "横屏固定270:开" : "横屏固定270:关");
+    }
+
     private void saveConfig() {
         try {
             cfg.debounceMs = Long.parseLong(debounceEt.getText().toString());
@@ -348,7 +369,7 @@ public class MainActivity extends Activity {
             } catch (Throwable t) {
             }
         }
-        Toast.makeText(this, "已保存 " + saved + " 个位置，重启目标应用生效", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "已保存。横屏270开关实时生效，其余配置重启目标应用生效", Toast.LENGTH_LONG).show();
     }
 
     private int dp(int v) {
