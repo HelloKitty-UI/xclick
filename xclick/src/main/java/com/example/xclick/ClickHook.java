@@ -34,6 +34,9 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private void hookSystemDisplayRotation(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
+            java.io.File conf = new java.io.File("/data/data/com.example.xclick/files/xclick.conf");
+            XposedBridge.log("[XClick] DR270 sys-load confExists=" + conf.exists()
+                    + " confCanRead=" + conf.canRead());
             Class<?> clazz = XposedHelpers.findClass(
                     "com.android.server.wm.DisplayRotation", lpparam.classLoader);
             XposedHelpers.findAndHookMethod(clazz, "rotationForOrientation",
@@ -41,18 +44,27 @@ public class ClickHook implements IXposedHookLoadPackage {
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                            if (!isRotate270Enabled()) return;
+                            boolean enabled;
+                            try {
+                                enabled = isRotate270Enabled();
+                            } catch (Throwable t) {
+                                enabled = false;
+                                XposedBridge.log("[XClick] DR270 flag-read error");
+                                XposedBridge.log(t);
+                            }
                             int orientation = ((Integer) param.args[0]).intValue();
                             int rotation = ((Integer) param.getResult()).intValue();
-                            if (rotation == android.view.Surface.ROTATION_90
+                            XposedBridge.log("[XClick] DR270 dbg o=" + orientation
+                                    + " r=" + rotation + " enabled=" + enabled);
+                            if (enabled && rotation == android.view.Surface.ROTATION_90
                                     && isLandscapeOrientation(orientation)) {
                                 param.setResult(android.view.Surface.ROTATION_270);
-                                XposedBridge.log("[XClick] DR270: orientation=" + orientation
+                                XposedBridge.log("[XClick] DR270 FLIP orientation=" + orientation
                                         + " ROTATION_90 -> ROTATION_270");
                             }
                         }
                     });
-            XposedBridge.log("[XClick] DisplayRotation.rotationForOrientation hooked (DR270)");
+            XposedBridge.log("[XClick] DR270 hooked OK bootFlag=" + isRotate270Enabled());
         } catch (Throwable t) {
             XposedBridge.log("[XClick] DR270 hook失败");
             XposedBridge.log(t);
