@@ -64,7 +64,8 @@ public class ClickHook implements IXposedHookLoadPackage {
                             }
                         }
                     });
-            XposedBridge.log("[XClick] DR270 hooked OK bootFlag=" + isRotate270Enabled());
+            XposedBridge.log("[XClick] DR270 hooked OK bootFlag=" + isRotate270Enabled()
+                    + " providerAvailable=" + (readFlagViaProvider() != null));
         } catch (Throwable t) {
             XposedBridge.log("[XClick] DR270 hook失败");
             XposedBridge.log(t);
@@ -90,6 +91,10 @@ public class ClickHook implements IXposedHookLoadPackage {
     }
 
     private static boolean isRotate270Enabled() {
+        Boolean viaProvider = readFlagViaProvider();
+        if (viaProvider != null) {
+            return viaProvider.booleanValue();
+        }
         String text = XConfig.readFile(new File("/data/data/com.example.xclick/files/xclick.conf"));
         if (text == null || text.trim().isEmpty()) {
             try {
@@ -103,6 +108,34 @@ public class ClickHook implements IXposedHookLoadPackage {
             } catch (Throwable t) {
             }
         }
+        return parseRotate270Flag(text);
+    }
+
+    private static Boolean readFlagViaProvider() {
+        try {
+            Class<?> atClass = Class.forName("android.app.ActivityThread");
+            Object at = XposedHelpers.callStaticMethod(atClass, "currentActivityThread");
+            if (at == null) return null;
+            android.content.Context sys =
+                    (android.content.Context) XposedHelpers.callMethod(at, "getSystemContext");
+            android.database.Cursor cur = sys.getContentResolver().query(
+                    android.net.Uri.parse("content://com.example.xclick.dr270/flag"),
+                    null, null, null, null);
+            if (cur != null) {
+                try {
+                    if (cur.moveToFirst()) {
+                        return Boolean.valueOf(cur.getInt(0) != 0);
+                    }
+                } finally {
+                    cur.close();
+                }
+            }
+        } catch (Throwable t) {
+        }
+        return null;
+    }
+
+    private static boolean parseRotate270Flag(String text) {
         if (text == null) return false;
         for (String line : text.split("\n")) {
             String t = line.trim();

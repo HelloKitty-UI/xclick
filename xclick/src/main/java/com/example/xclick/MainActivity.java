@@ -369,6 +369,8 @@ public class MainActivity extends Activity {
             } catch (Throwable t) {
             }
         }
+        android.util.Log.i("DR270", "saved rotate_270=" + cfg.rotate270
+                + " textLen=" + text.length());
         Toast.makeText(this, "已保存。横屏270开关实时生效，其余配置重启目标应用生效", Toast.LENGTH_LONG).show();
     }
 
