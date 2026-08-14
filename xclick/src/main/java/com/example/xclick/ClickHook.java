@@ -93,6 +93,9 @@ public class ClickHook implements IXposedHookLoadPackage {
     private static long flagCacheAt = 0;
     private static boolean flagCacheVal = false;
     private static boolean btInputConnected = false;
+    private static final int BT_PROFILE_HID_HOST = 4;
+    private static final String BT_HID_CONNECTION_STATE_CHANGED =
+            "android.bluetooth.input.profile.action.CONNECTION_STATE_CHANGED";
 
     private static boolean isRotate270Enabled() {
         long now = SystemClock.elapsedRealtime();
@@ -158,7 +161,7 @@ public class ClickHook implements IXposedHookLoadPackage {
                 }
             };
             android.content.IntentFilter f = new android.content.IntentFilter();
-            f.addAction(android.bluetooth.BluetoothInputHost.ACTION_CONNECTION_STATE_CHANGED);
+            f.addAction(BT_HID_CONNECTION_STATE_CHANGED);
             try {
                 ctx.registerReceiver(r, f);
                 XposedBridge.log("[XClick] DR270 BT input receiver registered");
@@ -177,7 +180,7 @@ public class ClickHook implements IXposedHookLoadPackage {
             boolean has = false;
             android.bluetooth.BluetoothAdapter a = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
             if (a != null) {
-                if (a.getProfileConnectionState(android.bluetooth.BluetoothProfile.HID_HOST)
+                if (a.getProfileConnectionState(BT_PROFILE_HID_HOST)
                         == android.bluetooth.BluetoothProfile.STATE_CONNECTED) has = true;
             }
             if (has != btInputConnected) {

@@ -355,7 +355,7 @@ public class MainActivity extends Activity {
             android.bluetooth.BluetoothAdapter a =
                     android.bluetooth.BluetoothAdapter.getDefaultAdapter();
             if (a == null) return "蓝牙:不可用";
-            boolean has = a.getProfileConnectionState(android.bluetooth.BluetoothProfile.HID_HOST)
+            boolean has = a.getProfileConnectionState(4)
                     == android.bluetooth.BluetoothProfile.STATE_CONNECTED;
             return has ? "蓝牙输入设备(鼠标/手柄/键盘):已连接" : "蓝牙输入设备(鼠标/手柄/键盘):未连接";
         } catch (Throwable t) {
