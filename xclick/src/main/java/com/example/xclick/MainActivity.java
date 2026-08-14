@@ -157,7 +157,7 @@ public class MainActivity extends Activity {
         globalRow.addView(btRotateAutoBtn);
 
         btStateTv = new TextView(this);
-        btStateTv.setText(btOutputStateText());
+        btStateTv.setText(btInputStateText());
         btStateTv.setTextSize(12);
         btStateTv.setTextColor(Color.GRAY);
         btStateTv.setPadding(0, dp(4), 0, dp(4));
@@ -350,16 +350,14 @@ public class MainActivity extends Activity {
         btRotateAutoBtn.setText(cfg.btRotateAuto ? "蓝牙自动横屏:开" : "蓝牙自动横屏:关");
     }
 
-    private String btOutputStateText() {
+    private String btInputStateText() {
         try {
             android.bluetooth.BluetoothAdapter a =
                     android.bluetooth.BluetoothAdapter.getDefaultAdapter();
             if (a == null) return "蓝牙:不可用";
-            boolean has = a.getProfileConnectionState(android.bluetooth.BluetoothProfile.A2DP)
-                    == android.bluetooth.BluetoothProfile.STATE_CONNECTED
-                    || a.getProfileConnectionState(android.bluetooth.BluetoothProfile.HEADSET)
+            boolean has = a.getProfileConnectionState(android.bluetooth.BluetoothProfile.HID_HOST)
                     == android.bluetooth.BluetoothProfile.STATE_CONNECTED;
-            return has ? "蓝牙输出设备:已连接" : "蓝牙输出设备:未连接";
+            return has ? "蓝牙输入设备(鼠标/手柄/键盘):已连接" : "蓝牙输入设备(鼠标/手柄/键盘):未连接";
         } catch (Throwable t) {
             return "蓝牙:不可用";
         }

@@ -92,7 +92,7 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private static long flagCacheAt = 0;
     private static boolean flagCacheVal = false;
-    private static boolean btOutputConnected = false;
+    private static boolean btInputConnected = false;
 
     private static boolean isRotate270Enabled() {
         long now = SystemClock.elapsedRealtime();
@@ -113,7 +113,7 @@ public class ClickHook implements IXposedHookLoadPackage {
         flagCacheAt = now;
         boolean manual = parseRotate270Flag(text);
         boolean btAuto = parseBtAutoFlag(text);
-        flagCacheVal = manual || (btAuto && btOutputConnected);
+        flagCacheVal = manual || (btAuto && btInputConnected);
         return flagCacheVal;
     }
 
@@ -154,39 +154,37 @@ public class ClickHook implements IXposedHookLoadPackage {
             android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
                 @Override
                 public void onReceive(android.content.Context c, android.content.Intent it) {
-                    updateBtOutputState();
+                    updateBtInputState();
                 }
             };
             android.content.IntentFilter f = new android.content.IntentFilter();
-            f.addAction(android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
-            f.addAction(android.bluetooth.BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
+            f.addAction(android.bluetooth.BluetoothInputHost.ACTION_CONNECTION_STATE_CHANGED);
             try {
                 ctx.registerReceiver(r, f);
-                XposedBridge.log("[XClick] DR270 BT receiver registered");
+                XposedBridge.log("[XClick] DR270 BT input receiver registered");
             } catch (Throwable t) {
                 XposedBridge.log("[XClick] DR270 BT register失败");
             }
-            updateBtOutputState();
+            updateBtInputState();
         } catch (Throwable t) {
             XposedBridge.log("[XClick] DR270 BT receiver失败");
             XposedBridge.log(t);
         }
     }
 
-    private static void updateBtOutputState() {
+    private static void updateBtInputState() {
         try {
             boolean has = false;
             android.bluetooth.BluetoothAdapter a = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
             if (a != null) {
-                if (a.getProfileConnectionState(android.bluetooth.BluetoothProfile.A2DP)
-                        == android.bluetooth.BluetoothProfile.STATE_CONNECTED) has = true;
-                if (a.getProfileConnectionState(android.bluetooth.BluetoothProfile.HEADSET)
+                if (a.getProfileConnectionState(android.bluetooth.BluetoothProfile.HID_HOST)
                         == android.bluetooth.BluetoothProfile.STATE_CONNECTED) has = true;
             }
-            if (has != btOutputConnected) {
-                btOutputConnected = has;
+            if (has != btInputConnected) {
+                btInputConnected = has;
                 flagCacheAt = 0;
-                XposedBridge.log("[XClick] DR270 BT 输出设备=" + (has ? "已连接" : "未连接") + " 横屏固定切换生效");
+                XposedBridge.log("[XClick] DR270 BT 输入设备(鼠标/手柄)=" + (has ? "已连接" : "未连接")
+                        + " 横屏固定切换生效");
             }
         } catch (Throwable t) {
         }
