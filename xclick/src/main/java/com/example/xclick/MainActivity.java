@@ -140,9 +140,21 @@ public class MainActivity extends Activity {
         });
         globalRow.addView(rotate270Btn);
 
-        TextView space3 = new TextView(this);
-        space3.setText("    ");
-        globalRow.addView(space3);
+        Button saveGlobal = new Button(this);
+        saveGlobal.setText("保存全部");
+        saveGlobal.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                saveConfig();
+            }
+        });
+        globalRow.addView(saveGlobal);
+        listContainer.addView(globalRow);
+
+        LinearLayout btRow = new LinearLayout(this);
+        btRow.setOrientation(LinearLayout.HORIZONTAL);
+        btRow.setGravity(Gravity.CENTER_VERTICAL);
+        btRow.setPadding(0, dp(4), 0, dp(4));
 
         btRotateAutoBtn = new Button(this);
         updateBtAutoText();
@@ -154,25 +166,15 @@ public class MainActivity extends Activity {
                 saveConfig();
             }
         });
-        globalRow.addView(btRotateAutoBtn);
+        btRow.addView(btRotateAutoBtn);
 
         btStateTv = new TextView(this);
         btStateTv.setText(btInputStateText());
         btStateTv.setTextSize(12);
         btStateTv.setTextColor(Color.GRAY);
-        btStateTv.setPadding(0, dp(4), 0, dp(4));
-        listContainer.addView(btStateTv);
-
-        Button saveGlobal = new Button(this);
-        saveGlobal.setText("保存全部");
-        saveGlobal.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                saveConfig();
-            }
-        });
-        globalRow.addView(saveGlobal);
-        listContainer.addView(globalRow);
+        btStateTv.setPadding(dp(8), 0, 0, 0);
+        btRow.addView(btStateTv);
+        listContainer.addView(btRow);
 
         TextView tip = new TextView(this);
         tip.setText("配置列表（点击“编辑”可修改）：");
