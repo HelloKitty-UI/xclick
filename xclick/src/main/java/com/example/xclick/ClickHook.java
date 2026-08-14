@@ -171,25 +171,8 @@ public class ClickHook implements IXposedHookLoadPackage {
                 XposedBridge.log("[XClick] DR270 BT register失败");
             }
             updateBtInputState();
-            startBtPolling();
         } catch (Throwable t) {
             XposedBridge.log("[XClick] DR270 BT receiver失败");
-            XposedBridge.log(t);
-        }
-    }
-
-    private static void startBtPolling() {
-        try {
-            final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
-            h.post(new Runnable() {
-                @Override
-                public void run() {
-                    updateBtInputState();
-                    h.postDelayed(this, 2000);
-                }
-            });
-        } catch (Throwable t) {
-            XposedBridge.log("[XClick] DR270 BT polling失败");
             XposedBridge.log(t);
         }
     }
