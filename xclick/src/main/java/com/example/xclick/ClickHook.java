@@ -162,26 +162,49 @@ public class ClickHook implements IXposedHookLoadPackage {
             };
             android.content.IntentFilter f = new android.content.IntentFilter();
             f.addAction(BT_HID_CONNECTION_STATE_CHANGED);
+            f.addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED);
+            f.addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED);
             try {
                 ctx.registerReceiver(r, f);
-                XposedBridge.log("[XClick] DR270 BT input receiver registered");
+                XposedBridge.log("[XClick] DR270 BT receiver registered");
             } catch (Throwable t) {
                 XposedBridge.log("[XClick] DR270 BT register失败");
             }
             updateBtInputState();
+            startBtPolling();
         } catch (Throwable t) {
             XposedBridge.log("[XClick] DR270 BT receiver失败");
             XposedBridge.log(t);
         }
     }
 
+    private static void startBtPolling() {
+        try {
+            final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+            h.post(new Runnable() {
+                @Override
+                public void run() {
+                    updateBtInputState();
+                    h.postDelayed(this, 2000);
+                }
+            });
+        } catch (Throwable t) {
+            XposedBridge.log("[XClick] DR270 BT polling失败");
+            XposedBridge.log(t);
+        }
+    }
+
     private static void updateBtInputState() {
         try {
-            boolean has = false;
-            android.bluetooth.BluetoothAdapter a = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
-            if (a != null) {
-                if (a.getProfileConnectionState(BT_PROFILE_HID_HOST)
-                        == android.bluetooth.BluetoothProfile.STATE_CONNECTED) has = true;
+            boolean has;
+            if (android.os.Build.VERSION.SDK_INT >= 30) {
+                has = hasBluetoothInputDeviceByInputManager();
+            } else {
+                android.bluetooth.BluetoothAdapter a =
+                        android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+                has = a != null
+                        && a.getProfileConnectionState(BT_PROFILE_HID_HOST)
+                        == android.bluetooth.BluetoothProfile.STATE_CONNECTED;
             }
             if (has != btInputConnected) {
                 btInputConnected = has;
@@ -190,6 +213,25 @@ public class ClickHook implements IXposedHookLoadPackage {
                         + " 横屏固定切换生效");
             }
         } catch (Throwable t) {
+        }
+    }
+
+    private static boolean hasBluetoothInputDeviceByInputManager() {
+        try {
+            Class<?> imCls = Class.forName("android.hardware.input.InputManager");
+            Object im = imCls.getMethod("getInstance").invoke(null);
+            int[] ids = (int[]) imCls.getMethod("getInputDeviceIds").invoke(im);
+            if (ids == null) return false;
+            java.lang.reflect.Method getDev = imCls.getMethod("getInputDevice", int.class);
+            for (int id : ids) {
+                Object dev = getDev.invoke(im, Integer.valueOf(id));
+                if (dev == null) continue;
+                Object addr = dev.getClass().getMethod("getBluetoothAddress").invoke(dev);
+                if (addr != null && !((String) addr).isEmpty()) return true;
+            }
+            return false;
+        } catch (Throwable t) {
+            return false;
         }
     }
 
