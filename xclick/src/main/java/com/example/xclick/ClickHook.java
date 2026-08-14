@@ -157,7 +157,32 @@ public class ClickHook implements IXposedHookLoadPackage {
             android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
                 @Override
                 public void onReceive(android.content.Context c, android.content.Intent it) {
-                    updateBtInputState();
+                    String act = it.getAction();
+                    boolean conn = false;
+                    boolean disc = false;
+                    if (act != null) {
+                        if (act.equals(android.bluetooth.BluetoothDevice.ACTION_ACL_CONNECTED)) {
+                            conn = true;
+                        } else if (act.equals(
+                                android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED)) {
+                            disc = true;
+                        } else if (act.equals(BT_HID_CONNECTION_STATE_CHANGED)) {
+                            int st = it.getIntExtra("android.bluetooth.profile.extra.STATE", -1);
+                            if (st == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
+                                conn = true;
+                            } else if (st == android.bluetooth.BluetoothProfile.STATE_DISCONNECTED) {
+                                disc = true;
+                            } else {
+                                conn = true;
+                            }
+                        }
+                    }
+                    if (conn) {
+                        updateBtInputState();
+                        scheduleBtCheck(800);
+                    } else if (disc) {
+                        scheduleBtCheck(300);
+                    }
                 }
             };
             android.content.IntentFilter f = new android.content.IntentFilter();
@@ -174,6 +199,19 @@ public class ClickHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             XposedBridge.log("[XClick] DR270 BT receiver失败");
             XposedBridge.log(t);
+        }
+    }
+
+    private static void scheduleBtCheck(long delay) {
+        try {
+            final android.os.Handler h = new android.os.Handler(android.os.Looper.getMainLooper());
+            h.postDelayed(new Runnable() {
+                @Override
+                public void run() {
+                    updateBtInputState();
+                }
+            }, delay);
+        } catch (Throwable t) {
         }
     }
 
