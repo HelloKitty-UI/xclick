@@ -92,6 +92,7 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private static long flagCacheAt = 0;
     private static boolean flagCacheVal = false;
+    private static boolean btOutputConnected = false;
 
     private static boolean isRotate270Enabled() {
         long now = SystemClock.elapsedRealtime();
@@ -110,8 +111,85 @@ public class ClickHook implements IXposedHookLoadPackage {
             }
         }
         flagCacheAt = now;
-        flagCacheVal = parseRotate270Flag(text);
+        boolean manual = parseRotate270Flag(text);
+        boolean btAuto = parseBtAutoFlag(text);
+        flagCacheVal = manual || (btAuto && btOutputConnected);
         return flagCacheVal;
+    }
+
+    private static boolean parseBtAutoFlag(String text) {
+        if (text == null) return false;
+        for (String line : text.split("\n")) {
+            String t = line.trim();
+            if (t.isEmpty() || t.startsWith("#")) continue;
+            int eq = t.indexOf('=');
+            if (eq <= 0) continue;
+            String k = t.substring(0, eq).trim().toLowerCase();
+            if (k.equals("bt_rotate_auto") || k.equals("btrotateauto")) {
+                return !t.substring(eq + 1).trim().equals("0");
+            }
+        }
+        return false;
+    }
+
+    private void hookBtAutomation(XC_LoadPackage.LoadPackageParam lpparam) {
+        try {
+            XposedBridge.log("[XClick] DR270 BT automation hooking");
+            Class<?> appCls = XposedHelpers.findClass("android.app.Application", lpparam.classLoader);
+            XposedHelpers.findAndHookMethod(appCls, "onCreate",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            registerBtReceiver((android.content.Context) param.thisObject);
+                        }
+                    });
+        } catch (Throwable t) {
+            XposedBridge.log("[XClick] DR270 BT hook失败");
+            XposedBridge.log(t);
+        }
+    }
+
+    private static void registerBtReceiver(final android.content.Context ctx) {
+        try {
+            android.content.BroadcastReceiver r = new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(android.content.Context c, android.content.Intent it) {
+                    updateBtOutputState();
+                }
+            };
+            android.content.IntentFilter f = new android.content.IntentFilter();
+            f.addAction(android.bluetooth.BluetoothA2dp.ACTION_CONNECTION_STATE_CHANGED);
+            f.addAction(android.bluetooth.BluetoothHeadset.ACTION_CONNECTION_STATE_CHANGED);
+            try {
+                ctx.registerReceiver(r, f);
+                XposedBridge.log("[XClick] DR270 BT receiver registered");
+            } catch (Throwable t) {
+                XposedBridge.log("[XClick] DR270 BT register失败");
+            }
+            updateBtOutputState();
+        } catch (Throwable t) {
+            XposedBridge.log("[XClick] DR270 BT receiver失败");
+            XposedBridge.log(t);
+        }
+    }
+
+    private static void updateBtOutputState() {
+        try {
+            boolean has = false;
+            android.bluetooth.BluetoothAdapter a = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (a != null) {
+                if (a.getProfileConnectionState(android.bluetooth.BluetoothProfile.A2DP)
+                        == android.bluetooth.BluetoothProfile.STATE_CONNECTED) has = true;
+                if (a.getProfileConnectionState(android.bluetooth.BluetoothProfile.HEADSET)
+                        == android.bluetooth.BluetoothProfile.STATE_CONNECTED) has = true;
+            }
+            if (has != btOutputConnected) {
+                btOutputConnected = has;
+                flagCacheAt = 0;
+                XposedBridge.log("[XClick] DR270 BT 输出设备=" + (has ? "已连接" : "未连接") + " 横屏固定切换生效");
+            }
+        } catch (Throwable t) {
+        }
     }
 
     private static boolean parseRotate270Flag(String text) {
@@ -185,6 +263,7 @@ public class ClickHook implements IXposedHookLoadPackage {
         XposedBridge.log("[XClick] loadPackage pkg=" + lpparam.packageName);
         if ("android".equals(lpparam.packageName)) {
             hookSystemDisplayRotation(lpparam);
+            hookBtAutomation(lpparam);
             return;
         }
         if (lpparam.packageName.equals("com.example.xclick")) return;

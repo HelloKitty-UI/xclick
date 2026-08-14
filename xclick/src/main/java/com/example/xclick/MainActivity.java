@@ -35,6 +35,8 @@ public class MainActivity extends Activity {
     private EditText debounceEt;
     private Button consumeBtn;
     private Button rotate270Btn;
+    private Button btRotateAutoBtn;
+    private TextView btStateTv;
 
     private EditText eName;
     private EditText ePkg;
@@ -75,6 +77,7 @@ public class MainActivity extends Activity {
         cfg.debounceMs = parsed.debounceMs;
         cfg.consumeKey = parsed.consumeKey;
         cfg.rotate270 = parsed.rotate270;
+        cfg.btRotateAuto = parsed.btRotateAuto;
         cfg.profiles = parsed.profiles;
     }
 
@@ -136,6 +139,29 @@ public class MainActivity extends Activity {
             }
         });
         globalRow.addView(rotate270Btn);
+
+        TextView space3 = new TextView(this);
+        space3.setText("    ");
+        globalRow.addView(space3);
+
+        btRotateAutoBtn = new Button(this);
+        updateBtAutoText();
+        btRotateAutoBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                cfg.btRotateAuto = !cfg.btRotateAuto;
+                updateBtAutoText();
+                saveConfig();
+            }
+        });
+        globalRow.addView(btRotateAutoBtn);
+
+        btStateTv = new TextView(this);
+        btStateTv.setText(btOutputStateText());
+        btStateTv.setTextSize(12);
+        btStateTv.setTextColor(Color.GRAY);
+        btStateTv.setPadding(0, dp(4), 0, dp(4));
+        listContainer.addView(btStateTv);
 
         Button saveGlobal = new Button(this);
         saveGlobal.setText("保存全部");
@@ -320,6 +346,25 @@ public class MainActivity extends Activity {
         rotate270Btn.setText(cfg.rotate270 ? "横屏固定270:开" : "横屏固定270:关");
     }
 
+    private void updateBtAutoText() {
+        btRotateAutoBtn.setText(cfg.btRotateAuto ? "蓝牙自动横屏:开" : "蓝牙自动横屏:关");
+    }
+
+    private String btOutputStateText() {
+        try {
+            android.bluetooth.BluetoothAdapter a =
+                    android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+            if (a == null) return "蓝牙:不可用";
+            boolean has = a.getProfileConnectionState(android.bluetooth.BluetoothProfile.A2DP)
+                    == android.bluetooth.BluetoothProfile.STATE_CONNECTED
+                    || a.getProfileConnectionState(android.bluetooth.BluetoothProfile.HEADSET)
+                    == android.bluetooth.BluetoothProfile.STATE_CONNECTED;
+            return has ? "蓝牙输出设备:已连接" : "蓝牙输出设备:未连接";
+        } catch (Throwable t) {
+            return "蓝牙:不可用";
+        }
+    }
+
     private void saveConfig() {
         try {
             cfg.debounceMs = Long.parseLong(debounceEt.getText().toString());
@@ -329,6 +374,7 @@ public class MainActivity extends Activity {
         sb.append("debounce_ms=").append(cfg.debounceMs).append("\n");
         sb.append("consume_key=").append(cfg.consumeKey ? 1 : 0).append("\n");
         sb.append("rotate_270=").append(cfg.rotate270 ? 1 : 0).append("\n");
+        sb.append("bt_rotate_auto=").append(cfg.btRotateAuto ? 1 : 0).append("\n");
         sb.append(cfg.toString());
         String text = sb.toString();
 

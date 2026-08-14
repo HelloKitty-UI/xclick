@@ -13,6 +13,7 @@ public class XConfig {
     public long debounceMs = 600;
     public boolean consumeKey = true;
     public boolean rotate270 = false;
+    public boolean btRotateAuto = false;
 
     public static class Profile {
         public String name = "未命名";
@@ -43,6 +44,8 @@ public class XConfig {
                 + "# 可选第 4 行：child = 点击 view 内文本命中的那一部分\n"
                 + "# 全局开关 rotate_270：应用/视频请求横屏时强制 ROTATION_270(充电口朝上)\n"
                 + "#   rotate_270=1 开启，rotate_270=0 或删除为系统默认（实时生效，无需重启）\n"
+                + "# 全局开关 bt_rotate_auto：蓝牙输出设备(耳机/音箱)连接时自动开启横屏固定270，断开自动关闭\n"
+                + "#   bt_rotate_auto=1 开启，bt_rotate_auto=0 或删除为关闭（实时生效，与 rotate_270 为或关系）\n"
                 + "[B站-音量大展开回复]\n"
                 + "pkg=com.bilibili.app.in\n"
                 + "key=VOLUME_UP\n"
@@ -97,6 +100,8 @@ public class XConfig {
                     cfg.consumeKey = !v.equals("0");
                 } else if (k.equals("rotate_270") || k.equals("rotate270")) {
                     cfg.rotate270 = !v.equals("0");
+                } else if (k.equals("bt_rotate_auto") || k.equals("btrotateauto")) {
+                    cfg.btRotateAuto = !v.equals("0");
                 }
                 continue;
             }
