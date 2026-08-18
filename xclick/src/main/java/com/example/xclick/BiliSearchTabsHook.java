@@ -10,16 +10,18 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 哔哩哔哩搜索页 专栏 Tab 补全模块 v1.1.1（诊断版）：
+ * 哔哩哔哩搜索页 专栏 Tab 补全模块 v1.1.3（诊断版）：
  * 只补全"专栏"Tab（type=3，uri=bilibili://search-result/column2）。
  * 搜索页 Tab 列表由服务端 SearchResultAll.nav 下发（SearchState.nav），
  * 本模块 hook SearchState#getNav() / setNav()，在服务端列表后追加缺失的专栏 Tab。
  * 诊断部分：记录 Tab 位置对应的 Fragment、专栏页 API 调用与返回，定位"专栏页空白"原因。
+ * v1.1.3: 修复所有 app 内类必须用目标 classLoader 加载（Class.forName 用模块 classloader 会找不到类，
+ * 导致 contImpl 之后所有诊断钩子安装失败）；每个钩子独立 try/catch。
  */
 public class BiliSearchTabsHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "[BiliSearchTabs]";
-    private static final String VERSION = "v1.1.2";
+    private static final String VERSION = "v1.1.3";
     private static final String TARGET = "com.bilibili.app.in";
 
     private static volatile boolean firstLoadLogged = false;
@@ -159,9 +161,32 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
                 }
             });
             XposedBridge.log(TAG + " " + VERSION + " getNav+setNav 钩子已安装");
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " init exception " + t);
+        }
 
-            Class<?> contImpl = Class.forName("kotlin.coroutines.jvm.internal.ContinuationImpl");
+        try {
+            Class<?> contImpl = XposedHelpers.findClass(
+                    "kotlin.coroutines.jvm.internal.ContinuationImpl", cl);
+            hookApi(cl, "com.bilibili.search2.result.a", "d",
+                    new Class[]{int.class, String.class, String.class, contImpl}, "API.d(直播)");
+            hookApi(cl, "com.bilibili.search2.result.a", "c",
+                    new Class[]{String.class, int.class, String.class, String.class, String.class,
+                            String.class,
+                            XposedHelpers.findClass("com.bapis.bilibili.polymer.app.search.v1.UserSort", cl),
+                            XposedHelpers.findClass("com.bapis.bilibili.polymer.app.search.v1.UserType", cl),
+                            java.util.Map.class, contImpl}, "API.c(用户)");
+            hookApi(cl, "com.bilibili.search2.result.column.api.b", "a",
+                    new Class[]{String.class, String.class, long.class, String.class, String.class,
+                            String.class,
+                            XposedHelpers.findClass("com.bapis.bilibili.polymer.app.search.v1.CategorySort", cl),
+                            java.util.Map.class, contImpl}, "API.专栏");
+            XposedBridge.log(TAG + " API 钩子安装完成");
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " API 钩子安装异常 " + t);
+        }
 
+        try {
             XposedHelpers.findAndHookMethod("pK0.a", cl, "getItem", new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
@@ -175,7 +200,11 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
                 }
             }, int.class);
             XposedBridge.log(TAG + " 已安装 pK0.a.getItem 钩子");
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " 安装 getItem 钩子失败 " + t);
+        }
 
+        try {
             XposedHelpers.findAndHookMethod(
                     "com.bilibili.app.comm.list.widget.utils.C", cl, "f",
                     new XC_MethodHook() {
@@ -192,80 +221,69 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
                     },
                     android.content.Context.class, android.os.Bundle.class, String.class);
             XposedBridge.log(TAG + " 已安装 C.f 钩子");
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " 安装 C.f 钩子失败 " + t);
+        }
 
-            hookApi(cl, "com.bilibili.search2.result.a", "d",
-                    new Class[]{int.class, String.class, String.class, contImpl}, "API.d(直播)");
-            hookApi(cl, "com.bilibili.search2.result.a", "c",
-                    new Class[]{String.class, int.class, String.class, String.class, String.class,
-                            String.class,
-                            Class.forName("com.bapis.bilibili.polymer.app.search.v1.UserSort"),
-                            Class.forName("com.bapis.bilibili.polymer.app.search.v1.UserType"),
-                            java.util.Map.class, contImpl}, "API.c(用户)");
-            hookApi(cl, "com.bilibili.search2.result.column.api.b", "a",
-                    new Class[]{String.class, String.class, long.class, String.class, String.class,
-                            String.class,
-                            Class.forName("com.bapis.bilibili.polymer.app.search.v1.CategorySort"),
-                            java.util.Map.class, contImpl}, "API.专栏");
+        try {
+            Class<?> wCls = XposedHelpers.findClass("com.bilibili.search2.result.base.w", cl);
+            Class<?> contImpl = XposedHelpers.findClass(
+                    "kotlin.coroutines.jvm.internal.ContinuationImpl", cl);
+            XposedHelpers.findAndHookMethod("com.bilibili.search2.result.column.i", cl, "D1",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                Object w = param.args[0];
+                                String keyword = (String) XposedHelpers.getObjectField(w, "d");
+                                long categoryId = XposedHelpers.getLongField(w, "e");
+                                XposedBridge.log(TAG + " 专栏ViewModel.D1 keyword=" + keyword
+                                        + " categoryId=" + categoryId);
+                            } catch (Throwable t) {
+                                XposedBridge.log(TAG + " 专栏ViewModel.D1 记录异常 " + t);
+                            }
+                        }
+                    },
+                    wCls, contImpl);
+            XposedBridge.log(TAG + " 已安装 专栏ViewModel.D1 钩子");
+        } catch (Throwable t) {
+            XposedBridge.log(TAG + " 安装 专栏ViewModel.D1 钩子失败 " + t);
+        }
 
+        String[] frags = {
+                "com.bilibili.search2.result.column.SearchResultColumnFragment",
+                "com.bilibili.search2.ogv.OgvSearchResultFragment"};
+        for (final String fn : frags) {
             try {
-                XposedHelpers.findAndHookMethod("com.bilibili.search2.result.column.i", cl, "D1",
+                XposedHelpers.findAndHookMethod(fn, cl, "onCreate", android.os.Bundle.class,
                         new XC_MethodHook() {
                             @Override
-                            protected void beforeHookedMethod(MethodHookParam param) {
+                            protected void afterHookedMethod(MethodHookParam param) {
                                 try {
-                                    Object w = param.args[0];
-                                    String keyword = (String) XposedHelpers.getObjectField(w, "d");
-                                    long categoryId = XposedHelpers.getLongField(w, "e");
-                                    XposedBridge.log(TAG + " 专栏ViewModel.D1 keyword=" + keyword
-                                            + " categoryId=" + categoryId);
+                                    android.os.Bundle args = (android.os.Bundle)
+                                            XposedHelpers.callMethod(param.thisObject,
+                                                    "getArguments");
+                                    StringBuilder sb = new StringBuilder();
+                                    sb.append(fn.substring(fn.lastIndexOf('.') + 1))
+                                            .append(".onCreate args=")
+                                            .append(args == null ? "null" : args.keySet().toString());
+                                    if (args != null) {
+                                        android.os.Bundle b = args.getBundle("default_extra_bundle");
+                                        if (b != null) {
+                                            sb.append(" extra=").append(b.keySet().toString())
+                                                    .append(" keyword=").append(b.getString("keyword"));
+                                        }
+                                    }
+                                    XposedBridge.log(TAG + " " + sb);
                                 } catch (Throwable t) {
-                                    XposedBridge.log(TAG + " 专栏ViewModel.D1 记录异常 " + t);
+                                    XposedBridge.log(TAG + " " + fn + " onCreate 记录异常 " + t);
                                 }
                             }
-                        },
-                        Class.forName("com.bilibili.search2.result.base.w"), contImpl);
-                XposedBridge.log(TAG + " 已安装 专栏ViewModel.D1 钩子");
+                        });
+                XposedBridge.log(TAG + " 已安装 onCreate 钩子 " + fn);
             } catch (Throwable t) {
-                XposedBridge.log(TAG + " 安装 专栏ViewModel.D1 钩子失败 " + t);
+                XposedBridge.log(TAG + " 安装 onCreate 钩子失败 " + fn + " " + t);
             }
-
-            String[] frags = {
-                    "com.bilibili.search2.result.column.SearchResultColumnFragment",
-                    "com.bilibili.search2.ogv.OgvSearchResultFragment"};
-            for (final String fn : frags) {
-                try {
-                    XposedHelpers.findAndHookMethod(fn, cl, "onCreate", android.os.Bundle.class,
-                            new XC_MethodHook() {
-                                @Override
-                                protected void afterHookedMethod(MethodHookParam param) {
-                                    try {
-                                        android.os.Bundle args = (android.os.Bundle)
-                                                XposedHelpers.callMethod(param.thisObject,
-                                                        "getArguments");
-                                        StringBuilder sb = new StringBuilder();
-                                        sb.append(fn.substring(fn.lastIndexOf('.') + 1))
-                                                .append(".onCreate args=")
-                                                .append(args == null ? "null" : args.keySet().toString());
-                                        if (args != null) {
-                                            android.os.Bundle b = args.getBundle("default_extra_bundle");
-                                            if (b != null) {
-                                                sb.append(" extra=").append(b.keySet().toString())
-                                                        .append(" keyword=").append(b.getString("keyword"));
-                                            }
-                                        }
-                                        XposedBridge.log(TAG + " " + sb);
-                                    } catch (Throwable t) {
-                                        XposedBridge.log(TAG + " " + fn + " onCreate 记录异常 " + t);
-                                    }
-                                }
-                            });
-                    XposedBridge.log(TAG + " 已安装 onCreate 钩子 " + fn);
-                } catch (Throwable t) {
-                    XposedBridge.log(TAG + " 安装 onCreate 钩子失败 " + fn + " " + t);
-                }
-            }
-        } catch (Throwable t) {
-            XposedBridge.log(TAG + " init exception " + t);
         }
     }
 }
