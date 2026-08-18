@@ -19,8 +19,8 @@ import java.util.List;
 public class BiliSearchTabsHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "[BiliSearchTabs]";
-    private static final String VERSION = "v1.0.9";
-    private static final String TARGET = "tv.danmaku.bili";
+    private static final String VERSION = "v1.0.10";
+    private static final String TARGET = "com.bilibili.app.in";
 
     private static volatile boolean firstLoadLogged = false;
 
