@@ -13,7 +13,6 @@ import android.widget.TextView;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
-import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
@@ -34,10 +33,6 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private void hookSystemDisplayRotation(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            XposedBridge.log("[XClick] DR270 entering hookSystemDisplayRotation");
-            java.io.File conf = new java.io.File("/data/data/com.example.xclick/files/xclick.conf");
-            XposedBridge.log("[XClick] DR270 sys-load confExists=" + conf.exists()
-                    + " confCanRead=" + conf.canRead());
             Class<?> clazz = XposedHelpers.findClass(
                     "com.android.server.wm.DisplayRotation", lpparam.classLoader);
             XposedHelpers.findAndHookMethod(clazz, "rotationForOrientation",
@@ -50,25 +45,16 @@ public class ClickHook implements IXposedHookLoadPackage {
                                 enabled = isRotate270Enabled();
                             } catch (Throwable t) {
                                 enabled = false;
-                                XposedBridge.log("[XClick] DR270 flag-read error");
-                                XposedBridge.log(t);
                             }
                             int orientation = ((Integer) param.args[0]).intValue();
                             int rotation = ((Integer) param.getResult()).intValue();
-                            XposedBridge.log("[XClick] DR270 dbg o=" + orientation
-                                    + " r=" + rotation + " enabled=" + enabled);
                             if (enabled && rotation == android.view.Surface.ROTATION_90
                                     && isLandscapeOrientation(orientation)) {
                                 param.setResult(android.view.Surface.ROTATION_270);
-                                XposedBridge.log("[XClick] DR270 FLIP orientation=" + orientation
-                                        + " ROTATION_90 -> ROTATION_270");
                             }
                         }
                     });
-            XposedBridge.log("[XClick] DR270 hooked OK bootFlag=" + isRotate270Enabled());
         } catch (Throwable t) {
-            XposedBridge.log("[XClick] DR270 hook失败");
-            XposedBridge.log(t);
         }
     }
 
@@ -137,7 +123,6 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     private void hookBtAutomation(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            XposedBridge.log("[XClick] DR270 BT automation hooking");
             Class<?> appCls = XposedHelpers.findClass("android.app.Application", lpparam.classLoader);
             XposedHelpers.findAndHookMethod(appCls, "onCreate",
                     new XC_MethodHook() {
@@ -147,8 +132,6 @@ public class ClickHook implements IXposedHookLoadPackage {
                         }
                     });
         } catch (Throwable t) {
-            XposedBridge.log("[XClick] DR270 BT hook失败");
-            XposedBridge.log(t);
         }
     }
 
@@ -191,14 +174,10 @@ public class ClickHook implements IXposedHookLoadPackage {
             f.addAction(android.bluetooth.BluetoothDevice.ACTION_ACL_DISCONNECTED);
             try {
                 ctx.registerReceiver(r, f);
-                XposedBridge.log("[XClick] DR270 BT receiver registered");
             } catch (Throwable t) {
-                XposedBridge.log("[XClick] DR270 BT register失败");
             }
             updateBtInputState();
         } catch (Throwable t) {
-            XposedBridge.log("[XClick] DR270 BT receiver失败");
-            XposedBridge.log(t);
         }
     }
 
@@ -230,8 +209,6 @@ public class ClickHook implements IXposedHookLoadPackage {
             if (has != btInputConnected) {
                 btInputConnected = has;
                 flagCacheAt = 0;
-                XposedBridge.log("[XClick] DR270 BT 输入设备(鼠标/手柄)=" + (has ? "已连接" : "未连接")
-                        + " 横屏固定切换生效");
             }
         } catch (Throwable t) {
         }
@@ -282,7 +259,6 @@ public class ClickHook implements IXposedHookLoadPackage {
     private String pkg;
     private XC_LoadPackage.LoadPackageParam lp;
     private XConfig cfg;
-    private boolean cfgLoadedOnce = false;
     private final Map<String, Integer> resIdCache = new HashMap<String, Integer>();
     private WeakReference<Activity> currentActivity = new WeakReference<Activity>(null);
     private String triggerPath = null;
@@ -324,7 +300,6 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) {
-        XposedBridge.log("[XClick] loadPackage pkg=" + lpparam.packageName);
         if ("android".equals(lpparam.packageName)) {
             hookSystemDisplayRotation(lpparam);
             hookBtAutomation(lpparam);
@@ -334,7 +309,6 @@ public class ClickHook implements IXposedHookLoadPackage {
         try {
             cfg = loadConfig();
         } catch (Throwable t) {
-            XposedBridge.log("[XClick] 配置加载失败 " + t);
             return;
         }
         boolean anyMatch = false;
@@ -345,15 +319,6 @@ public class ClickHook implements IXposedHookLoadPackage {
             }
         }
         if (!anyMatch) return;
-        if (!cfgLoadedOnce) {
-            cfgLoadedOnce = true;
-            XposedBridge.log("[XClick] 当前应用=" + lpparam.packageName + " 只打印匹配本应用的配置:");
-            for (XConfig.Profile p : cfg.profiles) {
-                if (!p.matchesPackage(lpparam.packageName)) continue;
-                XposedBridge.log("[XClick] 配置: [" + p.name + "] key=" + p.keyName
-                        + " view=" + p.viewId + " child=" + p.childText);
-            }
-        }
 
         XposedHelpers.findAndHookMethod(Activity.class, "dispatchKeyEvent",
                 KeyEvent.class, new XC_MethodHook() {
@@ -396,7 +361,6 @@ public class ClickHook implements IXposedHookLoadPackage {
                                         handled = true;
                                     }
                                 } catch (Throwable t) {
-                                    XposedBridge.log("[XClick] 触发异常 " + t);
                                 }
                             }
                             long nowMs = System.currentTimeMillis();
@@ -407,11 +371,8 @@ public class ClickHook implements IXposedHookLoadPackage {
                             if (!handled) {
                                 lastTrigger = 0;
                             }
-                            XposedBridge.log("[XClick] 按键" + event.getKeyCode() + " 本包=" + lpparam.packageName
-                                    + " 处理=" + handled + " 消费=" + cfg.consumeKey);
                             writeKeyTrigger(event.getKeyCode());
                         } catch (Throwable t) {
-                            XposedBridge.log("[XClick] hook 异常 " + t);
                         }
                     }
                 });
@@ -573,7 +534,6 @@ public class ClickHook implements IXposedHookLoadPackage {
                                 try {
                                     trigger(p, act, lp);
                                 } catch (Throwable t2) {
-                                    XposedBridge.log("[XClick] 触发异常 " + t2);
                                 }
                             }
                         }
@@ -594,33 +554,16 @@ public class ClickHook implements IXposedHookLoadPackage {
         if (root == null) return false;
         List<View> candidates = collectCandidates(p, root, lpparam);
         if (candidates.isEmpty()) {
-            XposedBridge.log("[XClick] [" + p.name + "] 未找到目标 view=" + p.viewId
-                    + " child=" + p.childText);
             return false;
-        }
-        for (int i = 0; i < candidates.size() && i < 5; i++) {
-            View c = candidates.get(i);
-            String txt = "";
-            if (c instanceof TextView) {
-                CharSequence cs = ((TextView) c).getText();
-                txt = cs == null ? "" : cs.toString();
-            }
-            if (txt.length() > 30) txt = txt.substring(0, 30);
-            XposedBridge.log("[XClick] [" + p.name + "] 候选" + i + " "
-                    + c.getClass().getName() + " shown=" + c.isShown() + " text=" + txt);
         }
         View pick = pick(candidates, activity, p.childRegex != null);
         if (pick == null) {
-            XposedBridge.log("[XClick] [" + p.name + "] 无可视候选(候选均在屏幕可视区外),不点击");
             return false;
         }
         View decor = activity.getWindow().getDecorView();
         final View clicked = pick;
         final String beforeText = textOf(pick);
         boolean ok = triggerClick(pick, decor instanceof ViewGroup ? (ViewGroup) decor : null, p);
-        XposedBridge.log("[XClick] [" + p.name + "] 选定候选" + candidates.indexOf(pick)
-                + " clickable=" + pick.isClickable() + " onClickListener=" + hasClickListener(pick)
-                + " 点击结果=" + ok);
         final ViewGroup froot = decor instanceof ViewGroup ? (ViewGroup) decor : null;
         try {
             new Thread(new Runnable() {
@@ -631,8 +574,6 @@ public class ClickHook implements IXposedHookLoadPackage {
                     } catch (InterruptedException e) {
                     }
                     String after = textOf(clicked);
-                    XposedBridge.log("[XClick] [" + p.name + "] 点击前文本=" + beforeText
-                            + " 点击后文本=" + after);
                     if (after.equals(beforeText) && clicked.isShown() && froot != null
                             && !activityStopped && currentActivity.get() == clickAct
                             && clickTime >= lastUserKey && clickTime >= lastUserTouch) {
@@ -641,8 +582,7 @@ public class ClickHook implements IXposedHookLoadPackage {
                             froot.post(new Runnable() {
                                 @Override
                                 public void run() {
-                                    boolean ok2 = dispatchTouch(froot, cv);
-                                    XposedBridge.log("[XClick] [" + p.name + "] 未展开,兜底点击视图中心=" + ok2);
+                                    dispatchTouch(froot, cv);
                                 }
                             });
                         } catch (Throwable t2) {
@@ -664,16 +604,6 @@ public class ClickHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
         }
         return "";
-    }
-
-    private static boolean hasClickListener(View v) {
-        try {
-            java.lang.reflect.Field f = View.class.getDeclaredField("mOnClickListener");
-            f.setAccessible(true);
-            return f.get(v) != null;
-        } catch (Throwable t) {
-            return true;
-        }
     }
 
     private List<View> collectCandidates(XConfig.Profile p, View root, XC_LoadPackage.LoadPackageParam lpparam) {
@@ -816,42 +746,28 @@ public class ClickHook implements IXposedHookLoadPackage {
         int[] xy = new int[2];
         if (v.isShown() && root != null && tapTextPoint(v, p, xy)) {
             if (dispatchTouchAt(root, xy[0], xy[1])) {
-                int[] vr = new int[2];
-                String vrstr = "";
-                try {
-                    v.getLocationOnScreen(vr);
-                    vrstr = " 视图(" + vr[0] + "," + vr[1] + "," + (vr[0] + v.getWidth())
-                            + "," + (vr[1] + v.getHeight()) + ")";
-                } catch (Throwable t) {
-                }
-                XposedBridge.log("[XClick] 点击方式: 精准坐标触摸(" + xy[0] + "," + xy[1] + ")" + vrstr);
                 return true;
             }
         }
         if (clickSpan(v, p)) {
-            XposedBridge.log("[XClick] 点击方式: span");
             return true;
         }
         if (v.isShown() && root != null) {
             if (dispatchTouch(root, v)) {
-                XposedBridge.log("[XClick] 点击方式: 真实触摸(中心)");
                 return true;
             }
         }
         try {
             v.performClick();
-            XposedBridge.log("[XClick] 点击方式: performClick");
             return true;
         } catch (Throwable t) {
         }
         try {
             v.callOnClick();
-            XposedBridge.log("[XClick] 点击方式: callOnClick");
             return true;
         } catch (Throwable t) {
         }
         if (root != null && dispatchTouch(root, v)) {
-            XposedBridge.log("[XClick] 点击方式: 触摸兜底");
             return true;
         }
         View cur = v;
@@ -860,7 +776,6 @@ public class ClickHook implements IXposedHookLoadPackage {
                 View parent = (View) cur.getParent();
                 try {
                     parent.performClick();
-                    XposedBridge.log("[XClick] 点击方式: 父级performClick");
                     return true;
                 } catch (Throwable t) {
                 }
