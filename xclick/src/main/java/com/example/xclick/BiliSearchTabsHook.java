@@ -15,7 +15,7 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
     private static final int COLUMN_TYPE = 6;
     private static final String COLUMN_NAME = "专栏";
 
-    private static List<Object> completeNav(List<?> nav, Class<?> navInfo) {
+    private static List<?> completeNav(List<?> nav, Class<?> navInfo) {
         if (nav != null) {
             for (Object o : nav) {
                 if (o == null) continue;
