@@ -21,13 +21,13 @@ import java.util.List;
 public class BiliSearchTabsHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "[BiliSearchTabs]";
-    private static final String VERSION = "v1.1.5";
+    private static final String VERSION = "v1.1.6";
     private static final String TARGET = "com.bilibili.app.in";
 
     private static volatile boolean firstLoadLogged = false;
 
     private static List<Object> completeNav(List<?> nav, Class<?> navInfo) {
-        final int[] types = {3};
+        final int[] types = {6};
         final String[] names = {"专栏"};
         boolean[] present = new boolean[6];
         if (nav != null) {
