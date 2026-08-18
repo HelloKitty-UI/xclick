@@ -21,7 +21,7 @@ import java.util.List;
 public class BiliSearchTabsHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "[BiliSearchTabs]";
-    private static final String VERSION = "v1.1.4";
+    private static final String VERSION = "v1.1.5";
     private static final String TARGET = "com.bilibili.app.in";
 
     private static volatile boolean firstLoadLogged = false;
@@ -60,6 +60,14 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
             XposedBridge.log(TAG + " nav " + (nav == null ? "null" : nav.size())
                     + " -> " + full.size() + " 新增 " + added);
         }
+        StringBuilder sb = new StringBuilder(TAG + " navTypes ");
+        for (Object o : full) {
+            try {
+                sb.append(o == null ? "null" : XposedHelpers.callMethod(o, "getType")).append(",");
+            } catch (Throwable ignored) {
+            }
+        }
+        XposedBridge.log(sb.toString());
         return full;
     }
 
@@ -195,7 +203,29 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
                         Object f = param.getResult();
-                        XposedBridge.log(TAG + " getItem(" + param.args[0] + ") -> "
+                        int pos = (Integer) param.args[0];
+                        String uri = "";
+                        try {
+                            Object pages = XposedHelpers.getObjectField(param.thisObject, "c");
+                            if (pages instanceof java.util.List) {
+                                java.util.List<?> pl = (java.util.List<?>) pages;
+                                if (pos >= 0 && pos < pl.size()) {
+                                    Object page = pl.get(pos);
+                                    if (page != null) {
+                                        uri = String.valueOf(XposedHelpers.getObjectField(page, "b"));
+                                    } else {
+                                        uri = "<page null>";
+                                    }
+                                } else {
+                                    uri = "<out of bounds size=" + pl.size() + ">";
+                                }
+                            } else {
+                                uri = "<pages null>";
+                            }
+                        } catch (Throwable t) {
+                            uri = "<err " + t + ">";
+                        }
+                        XposedBridge.log(TAG + " getItem(" + pos + ") uri=" + uri + " -> "
                                 + (f == null ? "null" : f.getClass().getName()));
                     } catch (Throwable t) {
                         XposedBridge.log(TAG + " getItem 记录异常 " + t);
