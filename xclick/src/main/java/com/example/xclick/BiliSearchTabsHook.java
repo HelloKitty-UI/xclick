@@ -21,7 +21,7 @@ import java.util.List;
 public class BiliSearchTabsHook implements IXposedHookLoadPackage {
 
     private static final String TAG = "[BiliSearchTabs]";
-    private static final String VERSION = "v1.1.3";
+    private static final String VERSION = "v1.1.4";
     private static final String TARGET = "com.bilibili.app.in";
 
     private static volatile boolean firstLoadLogged = false;
@@ -93,7 +93,9 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
 
     private static void hookApi(ClassLoader cl, String cls, String method, Class<?>[] types, String label) {
         try {
-            XposedHelpers.findAndHookMethod(cls, cl, method, new XC_MethodHook() {
+            final Object[] args = new Object[types.length + 1];
+            System.arraycopy(types, 0, args, 0, types.length);
+            args[types.length] = new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
@@ -113,7 +115,8 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
                         XposedBridge.log(TAG + " " + label + " 记录异常 " + t);
                     }
                 }
-            }, types);
+            };
+            XposedHelpers.findAndHookMethod(cls, cl, method, args);
             XposedBridge.log(TAG + " 已安装API钩子 " + label);
         } catch (Throwable t) {
             XposedBridge.log(TAG + " 安装API钩子失败 " + label + " " + t);
@@ -187,7 +190,7 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
         }
 
         try {
-            XposedHelpers.findAndHookMethod("pK0.a", cl, "getItem", new XC_MethodHook() {
+            XposedHelpers.findAndHookMethod("pK0.a", cl, "getItem", int.class, new XC_MethodHook() {
                 @Override
                 protected void afterHookedMethod(MethodHookParam param) {
                     try {
@@ -207,6 +210,7 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
         try {
             XposedHelpers.findAndHookMethod(
                     "com.bilibili.app.comm.list.widget.utils.C", cl, "f",
+                    android.content.Context.class, android.os.Bundle.class, String.class,
                     new XC_MethodHook() {
                         @Override
                         protected void afterHookedMethod(MethodHookParam param) {
@@ -218,8 +222,7 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
                                 XposedBridge.log(TAG + " C.f 记录异常 " + t);
                             }
                         }
-                    },
-                    android.content.Context.class, android.os.Bundle.class, String.class);
+                    });
             XposedBridge.log(TAG + " 已安装 C.f 钩子");
         } catch (Throwable t) {
             XposedBridge.log(TAG + " 安装 C.f 钩子失败 " + t);
@@ -230,7 +233,7 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
             Class<?> contImpl = XposedHelpers.findClass(
                     "kotlin.coroutines.jvm.internal.ContinuationImpl", cl);
             XposedHelpers.findAndHookMethod("com.bilibili.search2.result.column.i", cl, "D1",
-                    new XC_MethodHook() {
+                    wCls, contImpl, new XC_MethodHook() {
                         @Override
                         protected void beforeHookedMethod(MethodHookParam param) {
                             try {
@@ -243,8 +246,7 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
                                 XposedBridge.log(TAG + " 专栏ViewModel.D1 记录异常 " + t);
                             }
                         }
-                    },
-                    wCls, contImpl);
+                    });
             XposedBridge.log(TAG + " 已安装 专栏ViewModel.D1 钩子");
         } catch (Throwable t) {
             XposedBridge.log(TAG + " 安装 专栏ViewModel.D1 钩子失败 " + t);
