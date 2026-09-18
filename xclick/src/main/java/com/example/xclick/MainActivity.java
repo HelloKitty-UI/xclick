@@ -20,7 +20,9 @@ import android.widget.Toast;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public class MainActivity extends Activity {
 
@@ -44,6 +46,8 @@ public class MainActivity extends Activity {
     private EditText eView;
     private EditText eChild;
 
+    private String currentViewPkg = null;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -61,7 +65,7 @@ public class MainActivity extends Activity {
         scroll.addView(root);
         setContentView(scroll);
         editContainer.setVisibility(View.GONE);
-        showList();
+        showAppList();
     }
 
     private void loadData() {
@@ -81,14 +85,15 @@ public class MainActivity extends Activity {
         cfg.profiles = parsed.profiles;
     }
 
-    private void showList() {
+    private void showAppList() {
+        currentViewPkg = null;
         editContainer.removeAllViews();
         editContainer.setVisibility(View.GONE);
         listContainer.removeAllViews();
         listContainer.setVisibility(View.VISIBLE);
 
         TextView title = new TextView(this);
-        title.setText("通用按键点击器 — 配置列表");
+        title.setText("通用按键点击器 — 配置");
         title.setTextSize(18);
         title.setTypeface(Typeface.DEFAULT_BOLD);
         title.setPadding(0, 0, 0, dp(8));
@@ -110,7 +115,7 @@ public class MainActivity extends Activity {
         globalRow.addView(debounceEt);
 
         TextView space = new TextView(this);
-        space.setText("    ");
+        space.setText("  ");
         globalRow.addView(space);
 
         consumeBtn = new Button(this);
@@ -125,7 +130,7 @@ public class MainActivity extends Activity {
         globalRow.addView(consumeBtn);
 
         TextView space2 = new TextView(this);
-        space2.setText("    ");
+        space2.setText("  ");
         globalRow.addView(space2);
 
         rotate270Btn = new Button(this);
@@ -141,7 +146,7 @@ public class MainActivity extends Activity {
         globalRow.addView(rotate270Btn);
 
         Button saveGlobal = new Button(this);
-        saveGlobal.setText("保存全部");
+        saveGlobal.setText("保存");
         saveGlobal.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -176,33 +181,132 @@ public class MainActivity extends Activity {
         btRow.addView(btStateTv);
         listContainer.addView(btRow);
 
-        TextView tip = new TextView(this);
-        tip.setText("配置列表（点击“编辑”可修改）：");
-        tip.setTextSize(14);
-        tip.setPadding(0, dp(10), 0, dp(4));
-        listContainer.addView(tip);
+        TextView appHeader = new TextView(this);
+        appHeader.setText("按应用分组配置（点击进入）：");
+        appHeader.setTextSize(14);
+        appHeader.setPadding(0, dp(10), 0, dp(4));
+        listContainer.addView(appHeader);
 
-        if (cfg.profiles.isEmpty()) {
+        LinkedHashMap<String, List<XConfig.Profile>> grouped = groupByPkg();
+
+        if (grouped.isEmpty()) {
             TextView empty = new TextView(this);
-            empty.setText("还没有配置，点下方“＋ 新建配置”添加");
+            empty.setText("还没有配置，点下方「+ 新建」添加");
             empty.setTextSize(14);
             empty.setTextColor(Color.GRAY);
             empty.setPadding(0, dp(8), 0, dp(8));
             listContainer.addView(empty);
         }
 
-        for (int i = 0; i < cfg.profiles.size(); i++) {
-            final XConfig.Profile p = cfg.profiles.get(i);
-            final int idx = i;
+        for (Map.Entry<String, List<XConfig.Profile>> entry : grouped.entrySet()) {
+            final String pkgName = entry.getKey();
+            List<XConfig.Profile> profiles = entry.getValue();
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(0, dp(8), 0, dp(8));
+
+            TextView appName = new TextView(this);
+            String displayName = pkgName.isEmpty() ? "未指定应用" : pkgName;
+            appName.setText(displayName + "  (" + profiles.size() + "条)");
+            appName.setTextSize(15);
+            appName.setTextColor(Color.BLACK);
+            appName.setPadding(0, 0, dp(6), 0);
+            row.addView(appName, new LinearLayout.LayoutParams(0,
+                    LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+
+            Button enterBtn = new Button(this);
+            enterBtn.setText("进入 >");
+            enterBtn.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    currentViewPkg = pkgName;
+                    showAppProfiles(pkgName);
+                }
+            });
+            row.addView(enterBtn);
+
+            listContainer.addView(row);
+
+            View divider = new View(this);
+            divider.setBackgroundColor(0xFFCCCCCC);
+            divider.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1));
+            listContainer.addView(divider);
+        }
+
+        Button addBtn = new Button(this);
+        addBtn.setText("+ 新建");
+        addBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                openEditor(-1, null);
+            }
+        });
+        listContainer.addView(addBtn);
+    }
+
+    private void showAppProfiles(String pkgName) {
+        editContainer.removeAllViews();
+        editContainer.setVisibility(View.GONE);
+        listContainer.removeAllViews();
+        listContainer.setVisibility(View.VISIBLE);
+
+        LinearLayout headerRow = new LinearLayout(this);
+        headerRow.setOrientation(LinearLayout.HORIZONTAL);
+        headerRow.setGravity(Gravity.CENTER_VERTICAL);
+        headerRow.setPadding(0, 0, 0, dp(8));
+
+        Button backBtn = new Button(this);
+        backBtn.setText("< 返回");
+        backBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                showAppList();
+            }
+        });
+        headerRow.addView(backBtn);
+
+        TextView title = new TextView(this);
+        String displayName = pkgName.isEmpty() ? "未指定应用" : pkgName;
+        title.setText(displayName);
+        title.setTextSize(16);
+        title.setTypeface(Typeface.DEFAULT_BOLD);
+        title.setPadding(dp(8), 0, 0, 0);
+        headerRow.addView(title, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        listContainer.addView(headerRow);
+
+        List<XConfig.Profile> appProfiles = new ArrayList<XConfig.Profile>();
+        for (XConfig.Profile p : cfg.profiles) {
+            String pPkg = p.pkg == null ? "" : p.pkg.trim();
+            String target = pkgName == null ? "" : pkgName.trim();
+            if (pPkg.equals(target)) {
+                appProfiles.add(p);
+            }
+        }
+
+        if (appProfiles.isEmpty()) {
+            TextView empty = new TextView(this);
+            empty.setText("该应用没有配置");
+            empty.setTextSize(14);
+            empty.setTextColor(Color.GRAY);
+            empty.setPadding(0, dp(8), 0, dp(8));
+            listContainer.addView(empty);
+        }
+
+        for (int i = 0; i < appProfiles.size(); i++) {
+            final XConfig.Profile p = appProfiles.get(i);
+            final int cfgIdx = cfg.profiles.indexOf(p);
             LinearLayout row = new LinearLayout(this);
             row.setOrientation(LinearLayout.HORIZONTAL);
             row.setGravity(Gravity.CENTER_VERTICAL);
             row.setPadding(0, dp(6), 0, dp(6));
 
             TextView info = new TextView(this);
-            info.setText("[" + p.name + "] " + p.keyName + " -> view=" + p.viewId
-                    + (p.childText != null ? " (文本:" + p.childText + ")" : "")
-                    + "  包名:" + p.pkg);
+            info.setText("[" + p.name + "] " + p.keyName
+                    + (p.viewId != null && !p.viewId.isEmpty() ? " -> " + p.viewId : "")
+                    + (p.childText != null ? " (文本:" + p.childText + ")" : ""));
             info.setTextSize(13);
             info.setPadding(0, 0, dp(6), 0);
             row.addView(info, new LinearLayout.LayoutParams(0,
@@ -210,10 +314,11 @@ public class MainActivity extends Activity {
 
             Button editBtn = new Button(this);
             editBtn.setText("编辑");
+            final int idx = cfgIdx;
             editBtn.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
-                    openEditor(idx);
+                    openEditor(idx, pkgName);
                 }
             });
             row.addView(editBtn);
@@ -225,25 +330,47 @@ public class MainActivity extends Activity {
                 public void onClick(View v) {
                     cfg.profiles.remove(idx);
                     saveConfig();
-                    showList();
+                    showAppProfiles(pkgName);
                 }
             });
             row.addView(delBtn);
+
             listContainer.addView(row);
+
+            View divider = new View(this);
+            divider.setBackgroundColor(0xFFDDDDDD);
+            divider.setLayoutParams(new LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT, 1));
+            listContainer.addView(divider);
         }
 
         Button addBtn = new Button(this);
-        addBtn.setText("＋ 新建配置");
+        addBtn.setText("+ 新建该应用配置");
         addBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                openEditor(-1);
+                openEditor(-1, pkgName);
             }
         });
         listContainer.addView(addBtn);
     }
 
-    private void openEditor(int index) {
+    private LinkedHashMap<String, List<XConfig.Profile>> groupByPkg() {
+        LinkedHashMap<String, List<XConfig.Profile>> map =
+                new LinkedHashMap<String, List<XConfig.Profile>>();
+        for (XConfig.Profile p : cfg.profiles) {
+            String key = p.pkg == null ? "" : p.pkg.trim();
+            List<XConfig.Profile> list = map.get(key);
+            if (list == null) {
+                list = new ArrayList<XConfig.Profile>();
+                map.put(key, list);
+            }
+            list.add(p);
+        }
+        return map;
+    }
+
+    private void openEditor(int index, String returnPkg) {
         editIndex = index;
         listContainer.setVisibility(View.GONE);
         editContainer.setVisibility(View.VISIBLE);
@@ -267,30 +394,31 @@ public class MainActivity extends Activity {
 
         ePkg = new EditText(this);
         ePkg.setHint("生效应用包名（如 com.bilibili.app.in）");
-        ePkg.setText(p != null ? p.pkg : "");
+        ePkg.setText(p != null ? p.pkg : (returnPkg != null ? returnPkg : ""));
         ePkg.setSingleLine(true);
         editContainer.addView(ePkg);
 
         eKey = new EditText(this);
-        eKey.setHint("触发按键：数字键码或名字（如 25 / 24 / VOLUME_DOWN / VOLUME_UP）");
+        eKey.setHint("触发按键：数字键码或名字（如 25 / 24 / VOLUME_DOWN）");
         eKey.setText(p != null ? p.keyName : "VOLUME_DOWN");
         eKey.setSingleLine(true);
         editContainer.addView(eKey);
 
         eView = new EditText(this);
-        eView.setHint("要点击的 view id（如 gemini_halfscreen_expand）");
+        eView.setHint("要点击的 view id（如 plugin_comment_widget）");
         eView.setText(p != null ? p.viewId : "");
         eView.setSingleLine(true);
         editContainer.addView(eView);
 
         eChild = new EditText(this);
-        eChild.setHint("可选：view 内要点击的子文本（如 共.*条回复），留空点整个 view");
+        eChild.setHint("可选：view 内子文本（如 共.*条回复），留空点整个 view");
         eChild.setText(p != null && p.childText != null ? p.childText : "");
         eChild.setSingleLine(true);
         editContainer.addView(eChild);
 
         TextView hint = new TextView(this);
-        hint.setText("隐藏的按钮也能点中（如收起控制条时的全屏按钮），无需额外设置。");
+        hint.setText("隐藏的按钮也能点中（如收起控制条时的全屏按钮），无需额外设置。\n"
+                + "view 填 LinearLayout/FrameLayout 的 id 时自动点击其内的 TextView。");
         hint.setTextSize(12);
         hint.setTextColor(Color.GRAY);
         hint.setPadding(0, dp(4), 0, dp(4));
@@ -302,6 +430,7 @@ public class MainActivity extends Activity {
 
         Button saveBtn = new Button(this);
         saveBtn.setText("保存");
+        final String fReturnPkg = returnPkg;
         saveBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
@@ -327,7 +456,12 @@ public class MainActivity extends Activity {
                     cfg.profiles.add(n);
                 }
                 saveConfig();
-                showList();
+                if (fReturnPkg != null) {
+                    currentViewPkg = fReturnPkg;
+                    showAppProfiles(fReturnPkg);
+                } else {
+                    showAppList();
+                }
             }
         });
         row.addView(saveBtn);
@@ -337,7 +471,12 @@ public class MainActivity extends Activity {
         cancelBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                showList();
+                if (fReturnPkg != null) {
+                    currentViewPkg = fReturnPkg;
+                    showAppProfiles(fReturnPkg);
+                } else {
+                    showAppList();
+                }
             }
         });
         row.addView(cancelBtn);
@@ -378,20 +517,17 @@ public class MainActivity extends Activity {
         sb.append(cfg.toString());
         String text = sb.toString();
 
-        int saved = 0;
         try {
             SharedPreferences p = getSharedPreferences(CONFIG_PREFS, Context.MODE_WORLD_READABLE);
             p.edit().putString(CONFIG_KEY, text).commit();
             File prefsFile = new File(getDataDir(), "shared_prefs/" + CONFIG_PREFS + ".xml");
             prefsFile.setReadable(true, false);
-            saved++;
         } catch (Throwable t) {
             try {
                 SharedPreferences p = getSharedPreferences(CONFIG_PREFS, Context.MODE_PRIVATE);
                 p.edit().putString(CONFIG_KEY, text).commit();
                 File prefsFile = new File(getDataDir(), "shared_prefs/" + CONFIG_PREFS + ".xml");
                 prefsFile.setReadable(true, false);
-                saved++;
             } catch (Throwable t2) {
             }
         }
@@ -402,7 +538,6 @@ public class MainActivity extends Activity {
             out.close();
             f.setReadable(true, false);
             f.setWritable(true, false);
-            saved++;
         } catch (Throwable t) {
         }
         if (Build.VERSION.SDK_INT <= 29) {
@@ -413,13 +548,10 @@ public class MainActivity extends Activity {
                 FileOutputStream out = new FileOutputStream(f);
                 out.write(text.getBytes("UTF-8"));
                 out.close();
-                saved++;
             } catch (Throwable t) {
             }
         }
-        android.util.Log.i("DR270", "saved rotate_270=" + cfg.rotate270
-                + " textLen=" + text.length());
-        Toast.makeText(this, "已保存。横屏270开关实时生效，其余配置重启目标应用生效", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, "已保存", Toast.LENGTH_SHORT).show();
     }
 
     private int dp(int v) {

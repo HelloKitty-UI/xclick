@@ -630,6 +630,13 @@ public class ClickHook implements IXposedHookLoadPackage {
                                 out.add(v);
                             }
                         }
+                    } else if (v instanceof ViewGroup) {
+                        TextView tv = findFirstTextView((ViewGroup) v);
+                        if (tv != null && !out.contains(tv)) {
+                            out.add(tv);
+                        } else if (!out.contains(v)) {
+                            out.add(v);
+                        }
                     } else if (!out.contains(v)) {
                         out.add(v);
                     }
@@ -661,6 +668,27 @@ public class ClickHook implements IXposedHookLoadPackage {
             if (c instanceof TextView) {
                 CharSequence cs = ((TextView) c).getText();
                 if (cs != null && p.matcher(cs.toString()).find()) return c;
+            }
+            if (c instanceof ViewGroup) {
+                ViewGroup cg = (ViewGroup) c;
+                for (int i = cg.getChildCount() - 1; i >= 0; i--) {
+                    stack.push(cg.getChildAt(i));
+                }
+            }
+        }
+        return null;
+    }
+
+    private TextView findFirstTextView(ViewGroup g) {
+        ArrayDeque<View> stack = new ArrayDeque<View>();
+        for (int i = g.getChildCount() - 1; i >= 0; i--) {
+            stack.push(g.getChildAt(i));
+        }
+        while (!stack.isEmpty()) {
+            View c = stack.pop();
+            if (c instanceof TextView) {
+                CharSequence cs = ((TextView) c).getText();
+                if (cs != null && cs.length() > 0) return (TextView) c;
             }
             if (c instanceof ViewGroup) {
                 ViewGroup cg = (ViewGroup) c;
