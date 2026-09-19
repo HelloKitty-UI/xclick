@@ -5,4 +5,4 @@ author=HelloKitty
 description=Xposed auto-click module
 minApiVersion=102
 targetApiVersion=102
-staticScope=true
+staticScope=false
