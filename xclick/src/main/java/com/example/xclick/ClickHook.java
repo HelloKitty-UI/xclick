@@ -315,10 +315,14 @@ public class ClickHook implements IXposedHookLoadPackage {
         for (XConfig.Profile p : cfg.profiles) {
             if (p.matchesPackage(lpparam.packageName)) {
                 anyMatch = true;
+                android.util.Log.d("XClick", "matched profile: " + p.name + " pkg=" + p.pkg + " key=" + p.keyName + " view=" + p.viewId + " child=" + p.childText);
                 break;
             }
         }
-        if (!anyMatch) return;
+        if (!anyMatch) {
+            android.util.Log.d("XClick", "no profile for pkg=" + lpparam.packageName + " profiles=" + cfg.profiles.size());
+            return;
+        }
 
         XposedHelpers.findAndHookMethod(Activity.class, "dispatchKeyEvent",
                 KeyEvent.class, new XC_MethodHook() {
@@ -332,6 +336,7 @@ public class ClickHook implements IXposedHookLoadPackage {
                             KeyEvent event = (KeyEvent) param.args[0];
                             if (event == null) return;
                             if (event.getAction() != KeyEvent.ACTION_DOWN) return;
+                            android.util.Log.d("XClick", "keyDown: " + event.getKeyCode() + " pkg=" + lpparam.packageName);
                             lastUserKey = System.currentTimeMillis();
                             boolean pkgWanted = false;
                             for (XConfig.Profile p : cfg.profiles) {
@@ -559,6 +564,9 @@ public class ClickHook implements IXposedHookLoadPackage {
         View root = activity.getWindow().getDecorView();
         if (root == null) return false;
         List<View> candidates = collectCandidates(p, root, lpparam);
+        android.util.Log.d("XClick", "trigger: pkg=" + lpparam.packageName
+                + " viewId=" + p.viewId + " child=" + p.childText
+                + " candidates=" + candidates.size());
         if (candidates.isEmpty()) {
             return false;
         }
