@@ -300,6 +300,7 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) {
+        android.util.Log.d("XClick", "handleLoadPackage: " + lpparam.packageName);
         if ("android".equals(lpparam.packageName)) {
             hookSystemDisplayRotation(lpparam);
             hookBtAutomation(lpparam);
