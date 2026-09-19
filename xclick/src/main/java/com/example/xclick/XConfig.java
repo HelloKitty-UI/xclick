@@ -35,6 +35,13 @@ public class XConfig {
 
     public List<Profile> profiles = new ArrayList<Profile>();
 
+    public boolean matchesKeyAnywhere(int keyCode) {
+        for (Profile p : profiles) {
+            if (p.matchesKey(keyCode)) return true;
+        }
+        return false;
+    }
+
     public static String template() {
         return "# 通用按键点击器配置\n"
                 + "# 每个配置用 [名字] 开头，然后 3 行必填：\n"

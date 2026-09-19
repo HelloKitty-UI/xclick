@@ -57,6 +57,7 @@ public class ClickHook extends XposedModule {
         if ("android".equals(packageName)) {
             hookSystemDisplayRotation(classLoader);
             hookBtAutomation(classLoader);
+            hookMediaSessionManager(classLoader);
             return;
         }
         if ("com.example.xclick".equals(packageName)) return;
@@ -82,6 +83,8 @@ public class ClickHook extends XposedModule {
             triggerPath = appInfo.dataDir + "/files/xclick_trigger.txt";
         } catch (Throwable t) {
         }
+
+        this.log(4, "XClick", "onPackageLoaded pkg=" + packageName);
 
         hookDispatchKeyEvent();
         hookOnResume();
@@ -210,6 +213,36 @@ public class ClickHook extends XposedModule {
             }
         }
         return false;
+    }
+
+    private void hookMediaSessionManager(ClassLoader classLoader) {
+        try {
+            Class<?> msmCls = Class.forName("com.android.server.media.MediaSessionManagerImpl", false, classLoader);
+            Method m = msmCls.getDeclaredMethod("dispatchMediaKeyEvent", android.content.Intent.class, boolean.class);
+            this.hook(m).intercept(chain -> {
+                try {
+                    android.content.Intent it = (android.content.Intent) chain.getArg(0);
+                    KeyEvent ke = (KeyEvent) it.getParcelableExtra(android.content.Intent.EXTRA_KEY_EVENT);
+                    if (ke != null && ke.getAction() == KeyEvent.ACTION_DOWN) {
+                        int code = ke.getKeyCode();
+                        XConfig sysCfg = loadConfigFromFile();
+                        if (sysCfg != null && sysCfg.matchesKeyAnywhere(code)) {
+                            this.log(4, "XClick",
+                                    "MediaSessionManager CONSUMED keyCode=" + code);
+                            return true;
+                        }
+                    }
+                } catch (Throwable t) {
+                    this.log(6, "XClick",
+                            "MSM hook error: " + t.getMessage());
+                }
+                return chain.proceed();
+            });
+            this.log(4, "XClick", "hookMediaSessionManager OK");
+        } catch (Throwable t) {
+            this.log(6, "XClick",
+                    "hookMediaSessionManager FAILED: " + t.getMessage());
+        }
     }
 
     private void hookBtAutomation(ClassLoader classLoader) {
@@ -359,11 +392,15 @@ public class ClickHook extends XposedModule {
                     for (XConfig.Profile p : cfg.profiles) {
                         if (!p.matchesPackage(pkg)) continue;
                         if (!p.matchesKey(event.getKeyCode())) continue;
+                        this.log(4, "XClick",
+                                "triggering click for keyCode=" + event.getKeyCode());
                         try {
                             if (trigger(p, activity)) {
                                 handled = true;
                             }
                         } catch (Throwable t) {
+                            this.log(6, "XClick",
+                                    "trigger error: " + t.getMessage());
                         }
                     }
                     lastLocalClick = System.currentTimeMillis();
@@ -375,6 +412,8 @@ public class ClickHook extends XposedModule {
                         return true;
                     }
                 } catch (Throwable t) {
+                    this.log(6, "XClick",
+                            "dispatchKeyEvent error: " + t.getMessage());
                 }
                 return chain.proceed();
             });
@@ -444,17 +483,26 @@ public class ClickHook extends XposedModule {
                             android.content.Intent.EXTRA_KEY_EVENT);
                     if (ke != null && ke.getAction() == KeyEvent.ACTION_DOWN) {
                         int code = ke.getKeyCode();
+                        this.log(4, "XClick",
+                                "MediaSession callback keyCode=" + code + " pkg=" + pkg
+                                + " cfg=" + (cfg != null) + " match=" + anyKeyMatches(code));
                         if (cfg != null && pkg != null && anyKeyMatches(code)) {
                             lastUserKey = System.currentTimeMillis();
+                            this.log(4, "XClick",
+                                    "MediaSession CONSUMED keyCode=" + code);
                             return true;
                         }
-                        writeKeyTrigger(code);
                     }
                 } catch (Throwable t2) {
+                    this.log(6, "XClick",
+                            "MediaSession hook error: " + t2.getMessage());
                 }
                 return chain.proceed();
             });
+            this.log(4, "XClick", "hookMediaSessionCallback OK");
         } catch (Throwable t) {
+            this.log(6, "XClick",
+                    "hookMediaSessionCallback FAILED: " + t.getMessage());
         }
     }
 
@@ -1050,6 +1098,20 @@ public class ClickHook extends XposedModule {
         String text = XConfig.readFile(new File(path));
         if (text == null || text.trim().isEmpty()) return null;
         return XConfig.parse(text);
+    }
+
+    private static XConfig loadConfigFromFile() {
+        XConfig c = tryFromFile("/data/user/0/com.example.xclick/files/xclick.conf");
+        if (c == null) c = tryFromFile("/data/data/com.example.xclick/files/xclick.conf");
+        if (c == null) {
+            String ext = android.os.Environment.getExternalStorageDirectory().getAbsolutePath();
+            c = tryFromFile(ext + "/ClickTrigger/config.properties");
+            if (c == null) c = tryFromFile("/storage/emulated/0/ClickTrigger/config.properties");
+        }
+        if (c == null) {
+            c = XConfig.parse(XConfig.template());
+        }
+        return c;
     }
 
     private XConfig loadConfig() {
