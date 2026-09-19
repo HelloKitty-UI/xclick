@@ -443,7 +443,12 @@ public class ClickHook extends XposedModule {
                     KeyEvent ke = (KeyEvent) it.getParcelableExtra(
                             android.content.Intent.EXTRA_KEY_EVENT);
                     if (ke != null && ke.getAction() == KeyEvent.ACTION_DOWN) {
-                        writeKeyTrigger(ke.getKeyCode());
+                        int code = ke.getKeyCode();
+                        if (cfg != null && pkg != null && anyKeyMatches(code)) {
+                            lastUserKey = System.currentTimeMillis();
+                            return true;
+                        }
+                        writeKeyTrigger(code);
                     }
                 } catch (Throwable t2) {
                 }
