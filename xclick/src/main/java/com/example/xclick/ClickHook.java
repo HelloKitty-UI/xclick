@@ -313,6 +313,12 @@ public class ClickHook implements IXposedHookLoadPackage {
         } catch (Throwable t) {
             return;
         }
+        StringBuilder sb = new StringBuilder();
+        for (XConfig.Profile p : cfg.profiles) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(p.name).append("(").append(p.pkg).append(")");
+        }
+        XposedBridge.log("XClick: loaded " + cfg.profiles.size() + " profiles: " + sb.toString());
         boolean anyMatch = false;
         for (XConfig.Profile p : cfg.profiles) {
             if (p.matchesPackage(lpparam.packageName)) {
