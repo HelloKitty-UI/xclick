@@ -1,120 +1,59 @@
 package com.example.xclick;
 
 import android.app.Activity;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
+import android.util.DisplayMetrics;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
-import io.github.libxposed.api.XposedModule;
-import io.github.libxposed.api.XposedModuleInterface;
+import de.robv.android.xposed.IXposedHookLoadPackage;
+import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedHelpers;
+import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
 import java.io.File;
 import java.lang.ref.WeakReference;
-import java.lang.reflect.Method;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-public class ClickHook extends XposedModule {
+public class ClickHook implements IXposedHookLoadPackage {
 
     private static final String CONFIG_PREFS = "xclick_config";
     private static final String CONFIG_KEY = "config";
+    private static final java.util.regex.Pattern REPLY_TEXT =
+            java.util.regex.Pattern.compile("共[0-9][0-9,，.万wW]*条回复");
 
-    private long lastTrigger = 0;
-    private long lastKeyWrite = 0;
-    private long lastLocalClick = 0;
-    private volatile boolean watcherStarted = false;
-    private volatile boolean activityStopped = false;
-    private volatile long clickTime = 0;
-    private volatile long lastUserKey = 0;
-    private volatile long lastUserTouch = 0;
-    private String pkg;
-    private ClassLoader pkgClassLoader;
-    private android.content.pm.ApplicationInfo pkgAppInfo;
-    private XConfig cfg;
-    private final Map<String, Integer> resIdCache = new HashMap<String, Integer>();
-    private WeakReference<Activity> currentActivity = new WeakReference<Activity>(null);
-    private String triggerPath = null;
-
-    private static long flagCacheAt = 0;
-    private static boolean flagCacheVal = false;
-    private static boolean btInputConnected = false;
-    private static final int BT_PROFILE_HID_HOST = 4;
-    private static final String BT_HID_CONNECTION_STATE_CHANGED =
-            "android.bluetooth.input.profile.action.CONNECTION_STATE_CHANGED";
-
-    @Override
-    public void onPackageLoaded(XposedModuleInterface.PackageLoadedParam param) {
-        String packageName = param.getPackageName();
-        ClassLoader classLoader = param.getDefaultClassLoader();
-        android.content.pm.ApplicationInfo appInfo = param.getApplicationInfo();
-
-        if ("android".equals(packageName)) {
-            hookSystemDisplayRotation(classLoader);
-            hookBtAutomation(classLoader);
-            hookMediaSessionManager(classLoader);
-            return;
-        }
-        if ("com.example.xclick".equals(packageName)) return;
-
+    private void hookSystemDisplayRotation(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            cfg = loadConfig();
-        } catch (Throwable t) {
-            return;
-        }
-        boolean anyMatch = false;
-        for (XConfig.Profile p : cfg.profiles) {
-            if (p.matchesPackage(packageName)) {
-                anyMatch = true;
-                break;
-            }
-        }
-        if (!anyMatch) return;
-
-        pkg = packageName;
-        pkgClassLoader = classLoader;
-        pkgAppInfo = appInfo;
-        try {
-            triggerPath = appInfo.dataDir + "/files/xclick_trigger.txt";
-        } catch (Throwable t) {
-        }
-
-        this.log(4, "XClick", "onPackageLoaded pkg=" + packageName);
-
-        hookDispatchKeyEvent();
-        hookOnResume();
-        hookOnStop();
-        hookDispatchTouchEvent();
-        hookOnBackPressed();
-        hookMediaSessionCallback();
-        hookBiliSearchTabs(classLoader);
-        startWatcher();
-    }
-
-    private void hookSystemDisplayRotation(ClassLoader classLoader) {
-        try {
-            Class<?> clazz = Class.forName("com.android.server.wm.DisplayRotation", false, classLoader);
-            Method m = clazz.getDeclaredMethod("rotationForOrientation", int.class, int.class);
-            this.hook(m).intercept(chain -> {
-                boolean enabled;
-                try {
-                    enabled = isRotate270Enabled();
-                } catch (Throwable t) {
-                    enabled = false;
-                }
-                int orientation = ((Integer) chain.getArg(0)).intValue();
-                int rotation = ((Integer) chain.proceed()).intValue();
-                if (enabled && rotation == android.view.Surface.ROTATION_90
-                        && isLandscapeOrientation(orientation)) {
-                    return android.view.Surface.ROTATION_270;
-                }
-                return rotation;
-            });
+            Class<?> clazz = XposedHelpers.findClass(
+                    "com.android.server.wm.DisplayRotation", lpparam.classLoader);
+            XposedHelpers.findAndHookMethod(clazz, "rotationForOrientation",
+                    int.class, int.class,
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            boolean enabled;
+                            try {
+                                enabled = isRotate270Enabled();
+                            } catch (Throwable t) {
+                                enabled = false;
+                            }
+                            int orientation = ((Integer) param.args[0]).intValue();
+                            int rotation = ((Integer) param.getResult()).intValue();
+                            if (enabled && rotation == android.view.Surface.ROTATION_90
+                                    && isLandscapeOrientation(orientation)) {
+                                param.setResult(android.view.Surface.ROTATION_270);
+                            }
+                        }
+                    });
         } catch (Throwable t) {
         }
     }
@@ -137,67 +76,34 @@ public class ClickHook extends XposedModule {
         }
     }
 
+    private static long flagCacheAt = 0;
+    private static boolean flagCacheVal = false;
+    private static boolean btInputConnected = false;
+    private static final int BT_PROFILE_HID_HOST = 4;
+    private static final String BT_HID_CONNECTION_STATE_CHANGED =
+            "android.bluetooth.input.profile.action.CONNECTION_STATE_CHANGED";
+
     private static boolean isRotate270Enabled() {
         long now = SystemClock.elapsedRealtime();
         if (now - flagCacheAt < 2000) return flagCacheVal;
         String text = XConfig.readFile(new File("/data/data/com.example.xclick/files/xclick.conf"));
         if (text == null || text.trim().isEmpty()) {
-            text = readPrefsFile();
+            try {
+                de.robv.android.xposed.XSharedPreferences prefs =
+                        new de.robv.android.xposed.XSharedPreferences("com.example.xclick", CONFIG_PREFS);
+                prefs.makeWorldReadable();
+                prefs.reload();
+                if (prefs.getFile() != null && prefs.getFile().canRead()) {
+                    text = prefs.getString(CONFIG_KEY, "");
+                }
+            } catch (Throwable t) {
+            }
         }
         flagCacheAt = now;
         boolean manual = parseRotate270Flag(text);
         boolean btAuto = parseBtAutoFlag(text);
         flagCacheVal = manual || (btAuto && btInputConnected);
         return flagCacheVal;
-    }
-
-    private static String readPrefsFile() {
-        try {
-            File f = new File("/data/user_de/0/com.example.xclick/shared_prefs/" + CONFIG_PREFS + ".xml");
-            if (!f.exists()) f = new File("/data/data/com.example.xclick/shared_prefs/" + CONFIG_PREFS + ".xml");
-            if (!f.canRead()) {
-                f = new File("/data/user/0/com.example.xclick/shared_prefs/" + CONFIG_PREFS + ".xml");
-            }
-            if (!f.canRead()) return null;
-            java.io.BufferedReader r = new java.io.BufferedReader(new java.io.InputStreamReader(new java.io.FileInputStream(f), "UTF-8"));
-            StringBuilder sb = new StringBuilder();
-            String line;
-            boolean inConfig = false;
-            while ((line = r.readLine()) != null) {
-                if (line.contains(CONFIG_KEY)) {
-                    inConfig = true;
-                    int start = line.indexOf('>');
-                    int end = line.lastIndexOf('<');
-                    if (start >= 0 && end > start) {
-                        sb.append(line.substring(start + 1, end));
-                    }
-                } else if (inConfig && line.contains("</string")) {
-                    inConfig = false;
-                } else if (inConfig) {
-                    sb.append(line.trim());
-                }
-            }
-            r.close();
-            String val = sb.toString();
-            return val.isEmpty() ? null : val;
-        } catch (Throwable t) {
-            return null;
-        }
-    }
-
-    private static boolean parseRotate270Flag(String text) {
-        if (text == null) return false;
-        for (String line : text.split("\n")) {
-            String t = line.trim();
-            if (t.isEmpty() || t.startsWith("#")) continue;
-            int eq = t.indexOf('=');
-            if (eq <= 0) continue;
-            String k = t.substring(0, eq).trim().toLowerCase();
-            if (k.equals("rotate_270") || k.equals("rotate270")) {
-                return !t.substring(eq + 1).trim().equals("0");
-            }
-        }
-        return false;
     }
 
     private static boolean parseBtAutoFlag(String text) {
@@ -215,45 +121,16 @@ public class ClickHook extends XposedModule {
         return false;
     }
 
-    private void hookMediaSessionManager(ClassLoader classLoader) {
+    private void hookBtAutomation(XC_LoadPackage.LoadPackageParam lpparam) {
         try {
-            Class<?> msmCls = Class.forName("com.android.server.media.MediaSessionManagerImpl", false, classLoader);
-            Method m = msmCls.getDeclaredMethod("dispatchMediaKeyEvent", android.content.Intent.class, boolean.class);
-            this.hook(m).intercept(chain -> {
-                try {
-                    android.content.Intent it = (android.content.Intent) chain.getArg(0);
-                    KeyEvent ke = (KeyEvent) it.getParcelableExtra(android.content.Intent.EXTRA_KEY_EVENT);
-                    if (ke != null && ke.getAction() == KeyEvent.ACTION_DOWN) {
-                        int code = ke.getKeyCode();
-                        XConfig sysCfg = loadConfigFromFile();
-                        if (sysCfg != null && sysCfg.matchesKeyAnywhere(code)) {
-                            this.log(4, "XClick",
-                                    "MediaSessionManager CONSUMED keyCode=" + code);
-                            return true;
+            Class<?> appCls = XposedHelpers.findClass("android.app.Application", lpparam.classLoader);
+            XposedHelpers.findAndHookMethod(appCls, "onCreate",
+                    new XC_MethodHook() {
+                        @Override
+                        protected void afterHookedMethod(MethodHookParam param) throws Throwable {
+                            registerBtReceiver((android.content.Context) param.thisObject);
                         }
-                    }
-                } catch (Throwable t) {
-                    this.log(6, "XClick",
-                            "MSM hook error: " + t.getMessage());
-                }
-                return chain.proceed();
-            });
-            this.log(4, "XClick", "hookMediaSessionManager OK");
-        } catch (Throwable t) {
-            this.log(6, "XClick",
-                    "hookMediaSessionManager FAILED: " + t.getMessage());
-        }
-    }
-
-    private void hookBtAutomation(ClassLoader classLoader) {
-        try {
-            Class<?> appCls = Class.forName("android.app.Application", false, classLoader);
-            Method m = appCls.getDeclaredMethod("onCreate");
-            this.hook(m).intercept(chain -> {
-                Object result = chain.proceed();
-                registerBtReceiver((android.content.Context) chain.getThisObject());
-                return result;
-            });
+                    });
         } catch (Throwable t) {
         }
     }
@@ -356,218 +233,223 @@ public class ClickHook extends XposedModule {
         }
     }
 
-    private void hookDispatchKeyEvent() {
+    private static boolean parseRotate270Flag(String text) {
+        if (text == null) return false;
+        for (String line : text.split("\n")) {
+            String t = line.trim();
+            if (t.isEmpty() || t.startsWith("#")) continue;
+            int eq = t.indexOf('=');
+            if (eq <= 0) continue;
+            String k = t.substring(0, eq).trim().toLowerCase();
+            if (k.equals("rotate_270") || k.equals("rotate270")) {
+                return !t.substring(eq + 1).trim().equals("0");
+            }
+        }
+        return false;
+    }
+
+    private long lastTrigger = 0;
+    private long lastKeyWrite = 0;
+    private long lastLocalClick = 0;
+    private volatile boolean watcherStarted = false;
+    private volatile boolean activityStopped = false;
+    private volatile long clickTime = 0;
+    private volatile long lastUserKey = 0;
+    private volatile long lastUserTouch = 0;
+    private String pkg;
+    private XC_LoadPackage.LoadPackageParam lp;
+    private XConfig cfg;
+    private final Map<String, Integer> resIdCache = new HashMap<String, Integer>();
+    private WeakReference<Activity> currentActivity = new WeakReference<Activity>(null);
+    private String triggerPath = null;
+
+    private static XConfig tryFromFile(String path) {
+        if (path == null) return null;
+        String text = XConfig.readFile(new File(path));
+        if (text == null || text.trim().isEmpty()) return null;
+        return XConfig.parse(text);
+    }
+
+    private static XConfig tryFromPrefs() {
         try {
-            Method m = Activity.class.getDeclaredMethod("dispatchKeyEvent", KeyEvent.class);
-            this.hook(m).intercept(chain -> {
-                try {
-                    Object act = chain.getThisObject();
-                    if (act instanceof Activity) {
-                        currentActivity = new WeakReference<Activity>((Activity) act);
-                    }
-                    KeyEvent event = (KeyEvent) chain.getArg(0);
-                    if (event == null) return chain.proceed();
-                    if (event.getAction() != KeyEvent.ACTION_DOWN) return chain.proceed();
-                    lastUserKey = System.currentTimeMillis();
-                    boolean pkgWanted = false;
-                    for (XConfig.Profile p : cfg.profiles) {
-                        if (p.matchesPackage(pkg) && p.matchesKey(event.getKeyCode())) {
-                            pkgWanted = true;
-                            break;
+            de.robv.android.xposed.XSharedPreferences p =
+                    new de.robv.android.xposed.XSharedPreferences("com.example.xclick", CONFIG_PREFS);
+            p.makeWorldReadable();
+            if (p.getFile() == null || !p.getFile().canRead()) return null;
+            String text = p.getString(CONFIG_KEY, "");
+            if (text == null || text.trim().isEmpty()) return null;
+            return XConfig.parse(text);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    private XConfig loadConfig() {
+        XConfig c = tryFromFile("/data/user/0/com.example.xclick/files/xclick.conf");
+        if (c == null) c = tryFromPrefs();
+        if (c == null) {
+            String ext = android.os.Environment.getExternalStorageDirectory().getAbsolutePath();
+            c = tryFromFile(ext + "/ClickTrigger/config.properties");
+            if (c == null) c = tryFromFile("/storage/emulated/0/ClickTrigger/config.properties");
+        }
+        if (c == null) {
+            c = XConfig.parse(XConfig.template());
+        }
+        return c;
+    }
+
+    @Override
+    public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) {
+        if ("android".equals(lpparam.packageName)) {
+            hookSystemDisplayRotation(lpparam);
+            hookBtAutomation(lpparam);
+            return;
+        }
+        if (lpparam.packageName.equals("com.example.xclick")) return;
+        try {
+            cfg = loadConfig();
+        } catch (Throwable t) {
+            return;
+        }
+        boolean anyMatch = false;
+        for (XConfig.Profile p : cfg.profiles) {
+            if (p.matchesPackage(lpparam.packageName)) {
+                anyMatch = true;
+                break;
+            }
+        }
+        if (!anyMatch) return;
+
+        XposedHelpers.findAndHookMethod(Activity.class, "dispatchKeyEvent",
+                KeyEvent.class, new XC_MethodHook() {
+                    @Override
+                    protected void beforeHookedMethod(MethodHookParam param) {
+                        try {
+                            Object act = param.thisObject;
+                            if (act instanceof Activity) {
+                                currentActivity = new WeakReference<Activity>((Activity) act);
+                            }
+                            KeyEvent event = (KeyEvent) param.args[0];
+                            if (event == null) return;
+                            if (event.getAction() != KeyEvent.ACTION_DOWN) return;
+                            lastUserKey = System.currentTimeMillis();
+                            boolean pkgWanted = false;
+                            for (XConfig.Profile p : cfg.profiles) {
+                                if (p.matchesPackage(lpparam.packageName)
+                                        && p.matchesKey(event.getKeyCode())) {
+                                    pkgWanted = true;
+                                    break;
+                                }
+                            }
+                            if (!pkgWanted) return;
+                            try {
+                                XConfig fresh = loadConfig();
+                                if (fresh != null && !fresh.profiles.isEmpty()) {
+                                    cfg = fresh;
+                                }
+                            } catch (Throwable t) {
+                            }
+                            long now = System.currentTimeMillis();
+                            if (now - lastTrigger < cfg.debounceMs) return;
+                            lastTrigger = now;
+                            boolean handled = false;
+                            for (XConfig.Profile p : cfg.profiles) {
+                                if (!p.matchesPackage(lpparam.packageName)) continue;
+                                if (!p.matchesKey(event.getKeyCode())) continue;
+                                try {
+                                    if (trigger(p, (Activity) act, lpparam)) {
+                                        handled = true;
+                                    }
+                                } catch (Throwable t) {
+                                }
+                            }
+                            long nowMs = System.currentTimeMillis();
+                            lastLocalClick = nowMs;
+                            if (cfg.consumeKey) {
+                                param.setResult(true);
+                            }
+                            if (!handled) {
+                                lastTrigger = 0;
+                            }
+                            writeKeyTrigger(event.getKeyCode());
+                        } catch (Throwable t) {
                         }
                     }
-                    if (!pkgWanted) return chain.proceed();
+                });
+        try {
+            XposedHelpers.findAndHookMethod(Activity.class, "onResume", new XC_MethodHook() {
+                @Override
+                protected void afterHookedMethod(MethodHookParam param) {
                     try {
-                        XConfig fresh = loadConfig();
-                        if (fresh != null && !fresh.profiles.isEmpty()) {
-                            cfg = fresh;
+                        if (param.thisObject instanceof Activity) {
+                            currentActivity = new WeakReference<Activity>((Activity) param.thisObject);
                         }
                     } catch (Throwable t) {
                     }
-                    long now = System.currentTimeMillis();
-                    if (now - lastTrigger < cfg.debounceMs) return chain.proceed();
-                    lastTrigger = now;
-                    boolean handled = false;
-                    Activity activity = (act instanceof Activity) ? (Activity) act : null;
-                    for (XConfig.Profile p : cfg.profiles) {
-                        if (!p.matchesPackage(pkg)) continue;
-                        if (!p.matchesKey(event.getKeyCode())) continue;
-                        this.log(4, "XClick",
-                                "triggering click for keyCode=" + event.getKeyCode());
-                        try {
-                            if (trigger(p, activity)) {
-                                handled = true;
+                }
+            });
+        } catch (Throwable t) {
+        }
+        try {
+            XposedHelpers.findAndHookMethod(Activity.class, "onStop", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    activityStopped = true;
+                }
+            });
+        } catch (Throwable t) {
+        }
+        try {
+            XposedHelpers.findAndHookMethod(Activity.class, "dispatchTouchEvent",
+                    android.view.MotionEvent.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            lastUserTouch = System.currentTimeMillis();
+                        }
+                    });
+        } catch (Throwable t) {
+        }
+        try {
+            XposedHelpers.findAndHookMethod(Activity.class, "onBackPressed", new XC_MethodHook() {
+                @Override
+                protected void beforeHookedMethod(MethodHookParam param) {
+                    lastUserKey = System.currentTimeMillis();
+                }
+            });
+        } catch (Throwable t) {
+        }
+        try {
+            Class<?> cb = Class.forName("android.media.session.MediaSession$Callback");
+            XposedHelpers.findAndHookMethod(cb, "onMediaButtonEvent",
+                    android.content.Intent.class, new XC_MethodHook() {
+                        @Override
+                        protected void beforeHookedMethod(MethodHookParam param) {
+                            try {
+                                android.content.Intent it = (android.content.Intent) param.args[0];
+                                KeyEvent ke = (KeyEvent) it.getParcelableExtra(
+                                        android.content.Intent.EXTRA_KEY_EVENT);
+                                if (ke != null && ke.getAction() == KeyEvent.ACTION_DOWN) {
+                                    int code = ke.getKeyCode();
+                                    if (cfg != null && pkg != null && anyKeyMatches(code)) {
+                                        lastUserKey = System.currentTimeMillis();
+                                        param.setResult(true);
+                                        return;
+                                    }
+                                    writeKeyTrigger(code);
+                                }
+                            } catch (Throwable t2) {
                             }
-                        } catch (Throwable t) {
-                            this.log(6, "XClick",
-                                    "trigger error: " + t.getMessage());
                         }
-                    }
-                    lastLocalClick = System.currentTimeMillis();
-                    if (!handled) {
-                        lastTrigger = 0;
-                    }
-                    writeKeyTrigger(event.getKeyCode());
-                    if (cfg.consumeKey) {
-                        return true;
-                    }
-                } catch (Throwable t) {
-                    this.log(6, "XClick",
-                            "dispatchKeyEvent error: " + t.getMessage());
-                }
-                return chain.proceed();
-            });
+                    });
         } catch (Throwable t) {
         }
-    }
-
-    private void hookOnResume() {
+        pkg = lpparam.packageName;
         try {
-            Method m = Activity.class.getDeclaredMethod("onResume");
-            this.hook(m).intercept(chain -> {
-                Object result = chain.proceed();
-                try {
-                    Object thiz = chain.getThisObject();
-                    if (thiz instanceof Activity) {
-                        currentActivity = new WeakReference<Activity>((Activity) thiz);
-                    }
-                } catch (Throwable t) {
-                }
-                return result;
-            });
+            triggerPath = lpparam.appInfo.dataDir + "/files/xclick_trigger.txt";
         } catch (Throwable t) {
         }
-    }
-
-    private void hookOnStop() {
-        try {
-            Method m = Activity.class.getDeclaredMethod("onStop");
-            this.hook(m).intercept(chain -> {
-                activityStopped = true;
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-        }
-    }
-
-    private void hookDispatchTouchEvent() {
-        try {
-            Method m = Activity.class.getDeclaredMethod("dispatchTouchEvent", MotionEvent.class);
-            this.hook(m).intercept(chain -> {
-                lastUserTouch = System.currentTimeMillis();
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-        }
-    }
-
-    private void hookOnBackPressed() {
-        try {
-            Method m = Activity.class.getDeclaredMethod("onBackPressed");
-            this.hook(m).intercept(chain -> {
-                lastUserKey = System.currentTimeMillis();
-                return chain.proceed();
-            });
-        } catch (Throwable t) {
-        }
-    }
-
-    private void hookMediaSessionCallback() {
-        try {
-            Class<?> cb = Class.forName("android.media.session.MediaSession$Callback", false, null);
-            Method m = cb.getDeclaredMethod("onMediaButtonEvent", android.content.Intent.class);
-            this.hook(m).intercept(chain -> {
-                try {
-                    android.content.Intent it = (android.content.Intent) chain.getArg(0);
-                    KeyEvent ke = (KeyEvent) it.getParcelableExtra(
-                            android.content.Intent.EXTRA_KEY_EVENT);
-                    if (ke != null && ke.getAction() == KeyEvent.ACTION_DOWN) {
-                        int code = ke.getKeyCode();
-                        this.log(4, "XClick",
-                                "MediaSession callback keyCode=" + code + " pkg=" + pkg
-                                + " cfg=" + (cfg != null) + " match=" + anyKeyMatches(code));
-                        if (cfg != null && pkg != null && anyKeyMatches(code)) {
-                            lastUserKey = System.currentTimeMillis();
-                            this.log(4, "XClick",
-                                    "MediaSession CONSUMED keyCode=" + code);
-                            return true;
-                        }
-                    }
-                } catch (Throwable t2) {
-                    this.log(6, "XClick",
-                            "MediaSession hook error: " + t2.getMessage());
-                }
-                return chain.proceed();
-            });
-            this.log(4, "XClick", "hookMediaSessionCallback OK");
-        } catch (Throwable t) {
-            this.log(6, "XClick",
-                    "hookMediaSessionCallback FAILED: " + t.getMessage());
-        }
-    }
-
-    private void hookBiliSearchTabs(ClassLoader cl) {
-        try {
-            Class<?> searchState = Class.forName(
-                    "com.bilibili.search2.result.base.SearchState", false, cl);
-            Class<?> navInfo = Class.forName(
-                    "com.bilibili.search2.api.SearchResultAll$NavInfo", false, cl);
-
-            Method getNav = searchState.getDeclaredMethod("getNav");
-            this.hook(getNav).intercept(chain -> {
-                try {
-                    List<?> nav = (List<?>) chain.proceed();
-                    return completeNav(nav, navInfo);
-                } catch (Throwable ignored) {
-                    return chain.proceed();
-                }
-            });
-
-            Method setNav = searchState.getDeclaredMethod("setNav", List.class);
-            this.hook(setNav).intercept(chain -> {
-                try {
-                    List<?> nav = (List<?>) chain.getArg(0);
-                    chain.getArgs().set(0, completeNav(nav, navInfo));
-                } catch (Throwable ignored) {
-                }
-                return chain.proceed();
-            });
-        } catch (Throwable ignored) {
-        }
-    }
-
-    private static final int COLUMN_TYPE = 6;
-    private static final String COLUMN_NAME = "\u4e13\u680f";
-
-    private static List<?> completeNav(List<?> nav, Class<?> navInfo) {
-        if (nav != null) {
-            for (Object o : nav) {
-                if (o == null) continue;
-                try {
-                    Method getType = o.getClass().getDeclaredMethod("getType");
-                    Object type = getType.invoke(o);
-                    if (type != null && ((Integer) type).intValue() == COLUMN_TYPE) {
-                        return nav;
-                    }
-                } catch (Throwable ignored) {
-                }
-            }
-        }
-        List<Object> full = nav == null ? new ArrayList<Object>() : new ArrayList<Object>(nav);
-        try {
-            Object ni = navInfo.getDeclaredConstructor().newInstance();
-            Method setName = navInfo.getDeclaredMethod("setName", String.class);
-            setName.invoke(ni, COLUMN_NAME);
-            Method setType = navInfo.getDeclaredMethod("setType", int.class);
-            setType.invoke(ni, COLUMN_TYPE);
-            Method setTotal = navInfo.getDeclaredMethod("setTotal", int.class);
-            setTotal.invoke(ni, 0);
-            Method setPages = navInfo.getDeclaredMethod("setPages", int.class);
-            setPages.invoke(ni, 0);
-            full.add(ni);
-        } catch (Throwable t) {
-        }
-        return full;
+        lp = lpparam;
+        startWatcher();
     }
 
     private void writeKeyTrigger(int keyCode) {
@@ -656,7 +538,7 @@ public class ClickHook extends XposedModule {
                             for (XConfig.Profile p : cfg.profiles) {
                                 if (!p.matchesPackage(pkg) || !p.matchesKey(keyCode)) continue;
                                 try {
-                                    trigger(p, act);
+                                    trigger(p, act, lp);
                                 } catch (Throwable t2) {
                                 }
                             }
@@ -669,14 +551,14 @@ public class ClickHook extends XposedModule {
         }).start();
     }
 
-    private boolean trigger(final XConfig.Profile p, Activity activity) {
+    private boolean trigger(final XConfig.Profile p, Activity activity, XC_LoadPackage.LoadPackageParam lpparam) {
         if (activity == null) return false;
         activityStopped = false;
         clickTime = System.currentTimeMillis();
         final Activity clickAct = activity;
         View root = activity.getWindow().getDecorView();
         if (root == null) return false;
-        List<View> candidates = collectCandidates(p, root);
+        List<View> candidates = collectCandidates(p, root, lpparam);
         if (candidates.isEmpty()) {
             return false;
         }
@@ -730,11 +612,11 @@ public class ClickHook extends XposedModule {
         return "";
     }
 
-    private List<View> collectCandidates(XConfig.Profile p, View root) {
+    private List<View> collectCandidates(XConfig.Profile p, View root, XC_LoadPackage.LoadPackageParam lpparam) {
         List<View> out = new ArrayList<View>();
         int rid = 0;
         if (p.viewId != null && !p.viewId.isEmpty()) {
-            rid = resolveId(p.viewId, root);
+            rid = resolveId(p.viewId, root, lpparam);
             if (rid == 0) return out;
         }
         ArrayDeque<View> stack = new ArrayDeque<View>();
@@ -833,12 +715,12 @@ public class ClickHook extends XposedModule {
         return result;
     }
 
-    private int resolveId(String name, View v) {
+    private int resolveId(String name, View v, XC_LoadPackage.LoadPackageParam lpparam) {
         Integer cached = resIdCache.get(name);
         if (cached != null) return cached;
         int rid = 0;
         try {
-            rid = v.getResources().getIdentifier(name, "id", pkg);
+            rid = v.getResources().getIdentifier(name, "id", lpparam.packageName);
         } catch (Throwable t) {
         }
         resIdCache.put(name, rid);
@@ -850,7 +732,7 @@ public class ClickHook extends XposedModule {
         int sw = 0;
         int sh = 0;
         try {
-            android.util.DisplayMetrics dm = activity.getResources().getDisplayMetrics();
+            DisplayMetrics dm = activity.getResources().getDisplayMetrics();
             sw = dm.widthPixels;
             sh = dm.heightPixels;
         } catch (Throwable t) {
@@ -878,7 +760,7 @@ public class ClickHook extends XposedModule {
         int cx = 0;
         int cy = 0;
         try {
-            android.util.DisplayMetrics dm = activity.getResources().getDisplayMetrics();
+            DisplayMetrics dm = activity.getResources().getDisplayMetrics();
             cx = dm.widthPixels / 2;
             cy = dm.heightPixels / 2;
         } catch (Throwable t) {
@@ -1091,46 +973,5 @@ public class ClickHook extends XposedModule {
         } catch (Throwable t) {
             return false;
         }
-    }
-
-    private static XConfig tryFromFile(String path) {
-        if (path == null) return null;
-        String text = XConfig.readFile(new File(path));
-        if (text == null || text.trim().isEmpty()) return null;
-        return XConfig.parse(text);
-    }
-
-    private static XConfig loadConfigFromFile() {
-        XConfig c = tryFromFile("/data/user/0/com.example.xclick/files/xclick.conf");
-        if (c == null) c = tryFromFile("/data/data/com.example.xclick/files/xclick.conf");
-        if (c == null) {
-            String ext = android.os.Environment.getExternalStorageDirectory().getAbsolutePath();
-            c = tryFromFile(ext + "/ClickTrigger/config.properties");
-            if (c == null) c = tryFromFile("/storage/emulated/0/ClickTrigger/config.properties");
-        }
-        if (c == null) {
-            c = XConfig.parse(XConfig.template());
-        }
-        return c;
-    }
-
-    private XConfig loadConfig() {
-        XConfig c = tryFromFile("/data/user/0/com.example.xclick/files/xclick.conf");
-        if (c == null) c = tryFromFile("/data/data/com.example.xclick/files/xclick.conf");
-        if (c == null) {
-            String prefs = readPrefsFile();
-            if (prefs != null && !prefs.trim().isEmpty()) {
-                c = XConfig.parse(prefs);
-            }
-        }
-        if (c == null) {
-            String ext = android.os.Environment.getExternalStorageDirectory().getAbsolutePath();
-            c = tryFromFile(ext + "/ClickTrigger/config.properties");
-            if (c == null) c = tryFromFile("/storage/emulated/0/ClickTrigger/config.properties");
-        }
-        if (c == null) {
-            c = XConfig.parse(XConfig.template());
-        }
-        return c;
     }
 }

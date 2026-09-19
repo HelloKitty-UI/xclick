@@ -1,8 +1,0 @@
-name=XClick
-version=1.4.3
-versionCode=56
-author=HelloKitty
-description=Xposed auto-click module
-minApiVersion=102
-targetApiVersion=102
-staticScope=false

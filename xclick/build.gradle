@@ -10,8 +10,8 @@ android {
         applicationId "com.example.xclick"
         minSdk 21
         targetSdk 34
-        versionCode 56
-        versionName "1.4.3"
+        versionCode 57
+        versionName "1.5.0"
     }
 
     buildTypes {
@@ -27,5 +27,5 @@ android {
 }
 
 dependencies {
-    compileOnly 'io.github.libxposed:api:102.0.0'
+    compileOnly 'de.robv.android.xposed:api:82'
 }

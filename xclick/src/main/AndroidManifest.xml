@@ -28,10 +28,7 @@
             android:value="1.按键触发自动点击指定view（可配置）；2.哔哩哔哩搜索页Tab补全（综合/用户/直播/专栏/番剧/电影）" />
         <meta-data
             android:name="xposedminversion"
-            android:value="93" />
-        <meta-data
-            android:name="xposedscope"
-            android:resource="@array/xposed_scope" />
+            android:value="54" />
         <meta-data
             android:name="xposedsharedprefs"
             android:value="true" />
