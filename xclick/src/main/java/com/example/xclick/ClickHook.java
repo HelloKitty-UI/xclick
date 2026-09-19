@@ -13,6 +13,7 @@ import android.widget.TextView;
 
 import de.robv.android.xposed.IXposedHookLoadPackage;
 import de.robv.android.xposed.XC_MethodHook;
+import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
 import de.robv.android.xposed.callbacks.XC_LoadPackage;
 
@@ -300,7 +301,7 @@ public class ClickHook implements IXposedHookLoadPackage {
 
     @Override
     public void handleLoadPackage(final XC_LoadPackage.LoadPackageParam lpparam) {
-        android.util.Log.d("XClick", "handleLoadPackage: " + lpparam.packageName);
+        XposedBridge.log("XClick: handleLoadPackage: " + lpparam.packageName);
         if ("android".equals(lpparam.packageName)) {
             hookSystemDisplayRotation(lpparam);
             hookBtAutomation(lpparam);
@@ -316,12 +317,12 @@ public class ClickHook implements IXposedHookLoadPackage {
         for (XConfig.Profile p : cfg.profiles) {
             if (p.matchesPackage(lpparam.packageName)) {
                 anyMatch = true;
-                android.util.Log.d("XClick", "matched profile: " + p.name + " pkg=" + p.pkg + " key=" + p.keyName + " view=" + p.viewId + " child=" + p.childText);
+                XposedBridge.log("XClick: matched profile: " + p.name + " pkg=" + p.pkg + " key=" + p.keyName + " view=" + p.viewId + " child=" + p.childText);
                 break;
             }
         }
         if (!anyMatch) {
-            android.util.Log.d("XClick", "no profile for pkg=" + lpparam.packageName + " profiles=" + cfg.profiles.size());
+            XposedBridge.log("XClick: no profile for pkg=" + lpparam.packageName + " profiles=" + cfg.profiles.size());
             return;
         }
 
@@ -337,7 +338,7 @@ public class ClickHook implements IXposedHookLoadPackage {
                             KeyEvent event = (KeyEvent) param.args[0];
                             if (event == null) return;
                             if (event.getAction() != KeyEvent.ACTION_DOWN) return;
-                            android.util.Log.d("XClick", "keyDown: " + event.getKeyCode() + " pkg=" + lpparam.packageName);
+                            XposedBridge.log("XClick: keyDown: " + event.getKeyCode() + " pkg=" + lpparam.packageName);
                             lastUserKey = System.currentTimeMillis();
                             boolean pkgWanted = false;
                             for (XConfig.Profile p : cfg.profiles) {
@@ -565,7 +566,7 @@ public class ClickHook implements IXposedHookLoadPackage {
         View root = activity.getWindow().getDecorView();
         if (root == null) return false;
         List<View> candidates = collectCandidates(p, root, lpparam);
-        android.util.Log.d("XClick", "trigger: pkg=" + lpparam.packageName
+        XposedBridge.log("XClick: trigger: pkg=" + lpparam.packageName
                 + " viewId=" + p.viewId + " child=" + p.childText
                 + " candidates=" + candidates.size());
         if (candidates.isEmpty()) {
