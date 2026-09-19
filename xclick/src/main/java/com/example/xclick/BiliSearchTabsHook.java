@@ -22,7 +22,7 @@ public class BiliSearchTabsHook implements IXposedHookLoadPackage {
                 try {
                     Object type = XposedHelpers.callMethod(o, "getType");
                     if (type != null && ((Integer) type).intValue() == COLUMN_TYPE) {
-                        return nav;
+                        return new ArrayList<Object>(nav);
                     }
                 } catch (Throwable ignored) {
                 }
